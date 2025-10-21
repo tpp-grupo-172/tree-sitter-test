@@ -1,0 +1,40 @@
+{
+  "imports": [
+    "import math"
+  ],
+  "functions": [
+    {
+      "name": "area_of_circle",
+      "parameters": [
+        "r"
+      ]
+    },
+    {
+      "name": "hypotenuse",
+      "parameters": [
+        "a",
+        "b"
+      ]
+    }
+  ],
+  "classes": [
+    {
+      "name": "Geometry",
+      "methods": [
+        {
+          "name": "__init__",
+          "parameters": [
+            "self",
+            "shape_name"
+          ]
+        },
+        {
+          "name": "describe",
+          "parameters": [
+            "self"
+          ]
+        }
+      ]
+    }
+  ]
+}
