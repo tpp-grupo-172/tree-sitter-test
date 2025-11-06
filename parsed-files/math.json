@@ -6,15 +6,55 @@
     {
       "name": "area_of_circle",
       "parameters": [
-        "r"
-      ]
+        {
+          "name": "r",
+          "param_type": null,
+          "default_value": "0"
+        }
+      ],
+      "return_type": null
     },
     {
       "name": "hypotenuse",
       "parameters": [
-        "a",
-        "b"
-      ]
+        {
+          "name": "a",
+          "param_type": "int",
+          "default_value": null
+        },
+        {
+          "name": "b",
+          "param_type": "str",
+          "default_value": "\"hola\""
+        }
+      ],
+      "return_type": null
+    },
+    {
+      "name": "volume",
+      "parameters": [
+        {
+          "name": "a",
+          "param_type": null,
+          "default_value": null
+        },
+        {
+          "name": "b",
+          "param_type": "int",
+          "default_value": null
+        },
+        {
+          "name": "c",
+          "param_type": "int",
+          "default_value": "0"
+        },
+        {
+          "name": "d",
+          "param_type": null,
+          "default_value": "2"
+        }
+      ],
+      "return_type": null
     }
   ],
   "classes": [
@@ -24,15 +64,29 @@
         {
           "name": "__init__",
           "parameters": [
-            "self",
-            "shape_name"
-          ]
+            {
+              "name": "self",
+              "param_type": null,
+              "default_value": null
+            },
+            {
+              "name": "shape_name",
+              "param_type": "str",
+              "default_value": null
+            }
+          ],
+          "return_type": null
         },
         {
           "name": "describe",
           "parameters": [
-            "self"
-          ]
+            {
+              "name": "self",
+              "param_type": null,
+              "default_value": null
+            }
+          ],
+          "return_type": null
         }
       ]
     }

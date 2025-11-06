@@ -14,7 +14,7 @@ fn main() {
     let input_path = format!("input-files/{}", file_name);
     let source_code = fs::read_to_string(input_path).expect("Could not read input file");
 
-    let result = parser::parse_source(&source_code);
+    let result = parser::parse_file(&source_code);
 
     let json = serde_json::to_string_pretty(&result).unwrap();
     let split_name = file_name.split('.').next().unwrap();
