@@ -1,23 +1,24 @@
 mod models;
 mod parser;
+use std::{env, path::Path};
+use tree_sitter_test::run_analysis;
 
-use std::{fs, env};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Invalid inout parameters");
+        eprintln!("Invalid input parameters");
         std::process::exit(1);
     }
 
-    let file_name = &args[1];
-    let input_path = format!("input-files/{}", file_name);
-    let source_code = fs::read_to_string(input_path).expect("Could not read input file");
-
-    let result = parser::parse_file(&source_code);
-
-    let json = serde_json::to_string_pretty(&result).unwrap();
-    let split_name = file_name.split('.').next().unwrap();
-    let output_path = format!("parsed-files/{}.json", split_name);
-    fs::write(&output_path, &json).expect("Failed to write output");
+    let file_path = Path::new(&args[1]);
+    match run_analysis(file_path) {
+        Ok(json_output) => println!("{}", json_output),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    }
 }
+
+
