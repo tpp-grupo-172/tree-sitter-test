@@ -6,4 +6,5 @@ pub struct FunctionInfo {
     pub name: String,
     pub parameters: Vec<ParameterInfo>,
     pub return_type: Option<String>,
+    pub function_calls: Option<Vec<String>>
 }

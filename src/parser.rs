@@ -46,12 +46,19 @@ fn analyze_node(source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResu
                 if let Some(node_return_type) = node.child_by_field_name("type") {
                     return_type = Some(node_return_type.utf8_text(source.as_bytes()).unwrap().to_string());
                     println!("{:?}", return_type);
-                }                
+                }
+
+                let mut function_calls: Option<Vec<String>> = None;
+                if let Some(node_return_body) = node.child_by_field_name("body") {
+                    let calls = find_calls(source, &node_return_body);
+                    function_calls = Some(calls);
+                }     
             
                 let func_info = FunctionInfo {
                     name,
                     parameters,
                     return_type: return_type,
+                    function_calls
                 };
             
                 if let Some(class) = current_class.as_deref_mut() {
@@ -152,7 +159,26 @@ fn get_function_parameters<'a>(source: &'a str, node: &tree_sitter::Node<'a>) ->
     params
 }
 
+fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<String> {
+    let mut cursor = node.walk();
+    let mut calls = vec![];
 
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            // Nodo de llamada de función en Python
+            "call" => {
+                if let Some(func_node) = child.child_by_field_name("function") {
+                    let name = func_node.utf8_text(source.as_bytes()).unwrap().to_string();
+                    calls.push(name);
+                }
+            }
+            // Recorrer recursivamente el resto del cuerpo
+            _ => calls.extend(find_calls(source, &child)),
+        }
+    }
+
+    calls
+}
 
 #[allow(dead_code)]
 fn print_tree(source: &str, node: Node, indent: usize) {
