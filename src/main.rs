@@ -11,14 +11,15 @@ fn main() {
         std::process::exit(1);
     }
 
-    let file_path = Path::new(&args[1]);
-    match run_analysis(file_path) {
-        Ok(json_output) => println!("{}", json_output),
+    let file_name = &args[1];
+    let file_path = format!("input-files/{}", file_name);
+
+    match run_analysis(Path::new(&file_path)) {
+        Ok(_) => println!("Analysis complete"),
         Err(e) => {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     }
 }
-
 

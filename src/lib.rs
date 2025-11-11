@@ -4,7 +4,11 @@ pub mod parser;
 use std::{fs, path::Path, path::PathBuf};
 
 pub fn run_analysis(file_path: &Path) -> Result<String, String> {
-    let source_code = fs::read_to_string(file_path).expect("Could not read input file");
+    let source_code = match fs::read_to_string(file_path) {
+        Ok(c) => c,
+        Err(e) => return Err(format!("Could not read input file: {}", e)),
+    };
+
     let result = parser::parse_file(&source_code);
     let json = serde_json::to_string_pretty(&result).unwrap();
 

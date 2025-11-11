@@ -1,6 +1,7 @@
+#![allow(dead_code)]
+
 use tree_sitter::{Parser, TreeCursor, Node};
 use crate::models::{analysis_result::AnalysisResult, class_info::ClassInfo, function_info::FunctionInfo, parameter_info::ParameterInfo};
-
 
 pub fn parse_file(source: &str) -> AnalysisResult {
     let mut parser = Parser::new();

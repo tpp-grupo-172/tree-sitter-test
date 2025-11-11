@@ -12,7 +12,8 @@
           "default_value": "0"
         }
       ],
-      "return_type": null
+      "return_type": null,
+      "function_calls": []
     },
     {
       "name": "hypotenuse",
@@ -28,7 +29,10 @@
           "default_value": "\"hola\""
         }
       ],
-      "return_type": null
+      "return_type": null,
+      "function_calls": [
+        "math.sqrt"
+      ]
     },
     {
       "name": "volume",
@@ -54,7 +58,8 @@
           "default_value": "2"
         }
       ],
-      "return_type": null
+      "return_type": null,
+      "function_calls": []
     }
   ],
   "classes": [
@@ -75,7 +80,8 @@
               "default_value": null
             }
           ],
-          "return_type": null
+          "return_type": null,
+          "function_calls": []
         },
         {
           "name": "describe",
@@ -86,7 +92,10 @@
               "default_value": null
             }
           ],
-          "return_type": null
+          "return_type": null,
+          "function_calls": [
+            "print"
+          ]
         }
       ]
     }
