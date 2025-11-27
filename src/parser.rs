@@ -1,9 +1,16 @@
 #![allow(dead_code)]
 
+use std::path::{Path,PathBuf};
+
+
+use std::fs;
+
 use tree_sitter::{Parser, TreeCursor, Node};
+use crate::models::function_call::FunctionCall;
+use crate::models::import_info::ImportInfo;
 use crate::models::{analysis_result::AnalysisResult, class_info::ClassInfo, function_info::FunctionInfo, parameter_info::ParameterInfo};
 
-pub fn parse_file(source: &str) -> AnalysisResult {
+pub fn parse_file(source: &str, path: &Path, root_path: &[PathBuf]) -> AnalysisResult {
     let mut parser = Parser::new();
     parser.set_language(tree_sitter_python::language()).unwrap();
     let tree = parser.parse(source, None).unwrap();
@@ -17,13 +24,13 @@ pub fn parse_file(source: &str) -> AnalysisResult {
         classes: vec![],
     };
     let mut none_class: Option<&mut ClassInfo> = None;
-    analyze_node(source, &mut root_node.walk(), &mut result, &mut none_class);
+    analyze_node(path, root_path, source, &mut root_node.walk(), &mut result, &mut none_class);
 
     result
 }
 
 
-fn analyze_node(source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResult, current_class: &mut Option<&mut ClassInfo>) {
+fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResult, current_class: &mut Option<&mut ClassInfo>) {
     loop {
         let node = cursor.node();
         let kind = node.kind();
@@ -31,7 +38,12 @@ fn analyze_node(source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResu
         match kind {
             "import_statement" => {
                 let text = node.utf8_text(source.as_bytes()).unwrap_or("").trim().to_string();
-                result.imports.push(text);
+                let parts: Vec<&str> = text.split(' ').collect();
+                let field_name: String = parts.get(1).unwrap().to_string();
+
+                let import_path = resolve_python_import(path, &field_name, root_path);
+
+                result.imports.push(ImportInfo { name: field_name, path: import_path });
             }
             "function_definition" => {
                 let name = node
@@ -49,7 +61,7 @@ fn analyze_node(source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResu
                     println!("{:?}", return_type);
                 }
 
-                let mut function_calls: Option<Vec<String>> = None;
+                let mut function_calls: Option<Vec<FunctionCall>> = None;
                 if let Some(node_return_body) = node.child_by_field_name("body") {
                     let calls = find_calls(source, &node_return_body);
                     function_calls = Some(calls);
@@ -83,7 +95,7 @@ fn analyze_node(source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResu
                 if let Some(body) = node.child_by_field_name("body") {
                     let mut inner_cursor = body.walk();
                     let mut class_ref = Some(&mut class_info);
-                    analyze_node(source, &mut inner_cursor, result, &mut class_ref);
+                    analyze_node(path, root_path, source, &mut inner_cursor, result, &mut class_ref);
                 }
             
                 result.classes.push(class_info);
@@ -92,7 +104,7 @@ fn analyze_node(source: &str, cursor: &mut TreeCursor, result: &mut AnalysisResu
         }
 
         if kind != "class_definition" && cursor.goto_first_child() {
-            analyze_node(source, cursor, result, current_class);
+            analyze_node(path, root_path, source, cursor, result, current_class);
             cursor.goto_parent();
         }
 
@@ -160,9 +172,9 @@ fn get_function_parameters<'a>(source: &'a str, node: &tree_sitter::Node<'a>) ->
     params
 }
 
-fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<String> {
+fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<FunctionCall> {
     let mut cursor = node.walk();
-    let mut calls = vec![];
+    let mut calls: Vec<FunctionCall> = vec![];
 
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -170,7 +182,17 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<String> 
             "call" => {
                 if let Some(func_node) = child.child_by_field_name("function") {
                     let name = func_node.utf8_text(source.as_bytes()).unwrap().to_string();
-                    calls.push(name);
+                    let mut function_name = String::new();
+                    let mut import_name = None;
+                    if name.clone().contains('.') {
+                      let import_fuction_name: Vec<&str> = name.split('.').collect();
+                      function_name = import_fuction_name.get(1).unwrap().to_string();
+                      import_name = Some(import_fuction_name.get(0).unwrap().to_string());
+                    } else {
+                      function_name = name.clone();
+                    }
+
+                    calls.push(FunctionCall { name: function_name, import_name });
                 }
             }
             // Recorrer recursivamente el resto del cuerpo
@@ -180,7 +202,7 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<String> 
 
     calls
 }
-
+ 
 #[allow(dead_code)]
 fn print_tree(source: &str, node: Node, indent: usize) {
     let indent_str = " ".repeat(indent);
@@ -190,4 +212,84 @@ fn print_tree(source: &str, node: Node, indent: usize) {
     for child in node.named_children(&mut cursor) {
         print_tree(source, child, indent + 2);
     }
+}
+
+pub fn resolve_python_import(
+    current_file: &Path,
+    import_path: &str,
+    project_roots: &[PathBuf],
+) -> Option<PathBuf> {
+    if import_path.starts_with('.') {
+        return resolve_relative_python_import(current_file, import_path);
+    }
+
+    resolve_absolute_python_import(import_path, project_roots)
+}
+
+
+fn resolve_relative_python_import(current_file: &Path, import_path: &str) -> Option<PathBuf> {
+    let mut current_dir = current_file.parent()?.to_path_buf();
+
+    let mut chars = import_path.chars();
+    let mut levels = 0;
+
+    while chars.clone().next() == Some('.') {
+        chars.next();
+        levels += 1;
+    }
+
+    for _ in 0..(levels - 1) {
+        current_dir = current_dir.parent()?.to_path_buf();
+    }
+
+    let remaining = import_path.trim_start_matches('.');
+
+    if remaining.is_empty() {
+        return find_python_module(&current_dir);
+    }
+
+    let full = if remaining.starts_with('.') {
+        current_dir.join(remaining.trim_start_matches('.').replace('.', "/"))
+    } else {
+        current_dir.join(remaining.replace('.', "/"))
+    };
+
+    find_python_module(&full)
+}
+
+
+
+fn resolve_absolute_python_import(
+    import_path: &str,
+    project_roots: &[PathBuf],
+) -> Option<PathBuf> {
+    let rel_path = import_path.replace('.', "/");
+
+    for root in project_roots {
+        let full = root.join(&rel_path);
+        if let Some(found) = find_python_module(&full) {
+            return Some(found);
+        }
+    }
+
+    None
+}
+
+fn find_python_module(base: &Path) -> Option<PathBuf> {
+    let file = base.with_extension("py");
+
+    if file.exists() {
+        return file.canonicalize().ok();
+    }
+
+    let init = base.join("__init__.py");
+    if init.exists() {
+        return init.canonicalize().ok();
+    }
+
+    if base.is_dir() {
+        return base.canonicalize().ok();
+    }
+
+    None
 }

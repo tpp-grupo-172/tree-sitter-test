@@ -1,4 +1,10 @@
 import math
+# from file1 import hola, chau
+import file1
+
+def saludar():
+    file1.hola()
+    file1.chau().count()
 
 def area_of_circle(r = 0):
     return math.pi * r * r

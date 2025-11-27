@@ -1,6 +1,6 @@
 mod models;
 mod parser;
-use std::{env, path::Path};
+use std::{env, path::{Path, PathBuf}};
 use tree_sitter_test::run_analysis;
 
 
@@ -14,7 +14,7 @@ fn main() {
     let file_name = &args[1];
     let file_path = format!("input-files/{}", file_name);
 
-    match run_analysis(Path::new(&file_path)) {
+    match run_analysis(Path::new(&file_path), &[PathBuf::from("./input-files")]) {
         Ok(_) => println!("Analysis complete"),
         Err(e) => {
             eprintln!("Error: {}", e);

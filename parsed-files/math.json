@@ -1,8 +1,30 @@
 {
   "imports": [
-    "import math"
+    {
+      "name": "math",
+      "path": "/Users/federicojaleh/Documents/GitHub/tree-sitter-test/input-files/math.py"
+    },
+    {
+      "name": "file1",
+      "path": "/Users/federicojaleh/Documents/GitHub/tree-sitter-test/input-files/file1.py"
+    }
   ],
   "functions": [
+    {
+      "name": "saludar",
+      "parameters": [],
+      "return_type": null,
+      "function_calls": [
+        {
+          "name": "hola",
+          "import_name": "file1"
+        },
+        {
+          "name": "chau()",
+          "import_name": "file1"
+        }
+      ]
+    },
     {
       "name": "area_of_circle",
       "parameters": [
@@ -31,7 +53,10 @@
       ],
       "return_type": null,
       "function_calls": [
-        "math.sqrt"
+        {
+          "name": "sqrt",
+          "import_name": "math"
+        }
       ]
     },
     {
@@ -94,7 +119,10 @@
           ],
           "return_type": null,
           "function_calls": [
-            "print"
+            {
+              "name": "print",
+              "import_name": null
+            }
           ]
         }
       ]

@@ -3,13 +3,14 @@ pub mod parser;
 
 use std::{fs, path::Path, path::PathBuf};
 
-pub fn run_analysis(file_path: &Path) -> Result<String, String> {
+pub fn run_analysis(file_path: &Path, root_path: &[PathBuf]) -> Result<String, String> {
+    let cloned_path = file_path;
     let source_code = match fs::read_to_string(file_path) {
         Ok(c) => c,
         Err(e) => return Err(format!("Could not read input file: {}", e)),
     };
 
-    let result = parser::parse_file(&source_code);
+    let result = parser::parse_file(&source_code, cloned_path, root_path);
     let json = serde_json::to_string_pretty(&result).unwrap();
 
     let output_dir = PathBuf::from("parsed-files");
