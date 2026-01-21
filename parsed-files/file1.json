@@ -1,0 +1,39 @@
+{
+  "imports": [],
+  "functions": [
+    {
+      "name": "generador_de_numero",
+      "parameters": [],
+      "return_type": null,
+      "function_calls": []
+    },
+    {
+      "name": "numero_mas_cinco",
+      "parameters": [
+        {
+          "name": "numero",
+          "param_type": null,
+          "default_value": null
+        }
+      ],
+      "return_type": null,
+      "function_calls": []
+    },
+    {
+      "name": "sumar_cinco_llamando_funcion",
+      "parameters": [],
+      "return_type": null,
+      "function_calls": [
+        {
+          "name": "numero_mas_cinco",
+          "import_name": null
+        },
+        {
+          "name": "generador_de_numero",
+          "import_name": null
+        }
+      ]
+    }
+  ],
+  "classes": []
+}

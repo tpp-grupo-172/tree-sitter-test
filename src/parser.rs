@@ -194,6 +194,7 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<Function
 
                     calls.push(FunctionCall { name: function_name, import_name });
                 }
+                calls.extend(find_calls(source, &child))
             }
             // Recorrer recursivamente el resto del cuerpo
             _ => calls.extend(find_calls(source, &child)),
