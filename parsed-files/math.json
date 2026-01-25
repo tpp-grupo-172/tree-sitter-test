@@ -17,11 +17,15 @@
       "function_calls": [
         {
           "name": "hola",
-          "import_name": "file1"
+          "import_name": null
         },
         {
-          "name": "chau()",
-          "import_name": "file1"
+          "name": "count",
+          "import_name": "chau()"
+        },
+        {
+          "name": "chau",
+          "import_name": null
         }
       ]
     },

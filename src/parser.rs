@@ -4,6 +4,7 @@ use std::path::{Path,PathBuf};
 
 
 use std::fs;
+use std::ptr::null;
 
 use tree_sitter::{Parser, TreeCursor, Node};
 use crate::models::function_call::FunctionCall;
@@ -44,6 +45,10 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
                 let import_path = resolve_python_import(path, &field_name, root_path);
 
                 result.imports.push(ImportInfo { name: field_name, path: import_path });
+            }
+            "import_from_statement" => {
+                let import_from = parse_import_from_statement(source, &node, path, root_path);
+                result.imports.push(import_from);
             }
             "function_definition" => {
                 let name = node
@@ -112,6 +117,45 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
             break;
         }
     }
+}
+
+fn parse_import_from_statement(
+    source: &str,
+    node: &tree_sitter::Node,
+    current_file: &Path,
+    project_roots: &[PathBuf],
+) -> ImportInfo {
+    let mut functions = vec![];
+
+    let module_node = node.child_by_field_name("module_name");
+    let module_name = module_node
+        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+        .map(|s| s.to_string());
+
+    println!("{:?}", module_name);
+
+    let mut file_name: String = String::new();
+    if let Some(ref f_name) = module_name {
+      file_name = f_name.to_string();
+    }
+
+    let import_path = resolve_python_import(current_file, &file_name, project_roots);
+
+    let mut cursor = node.walk();
+
+
+    for child in node.children(&mut cursor) {
+          println!("{:?}", child.kind());
+        match child.kind() {
+            "dotted_name" => {
+              let text = child.utf8_text(source.as_bytes()).unwrap().to_string();
+              functions.push(text.clone());
+            },
+            _ => {}
+        }
+    }
+
+    ImportInfo { name: file_name, path: import_path }
 }
 
 
