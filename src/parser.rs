@@ -2,10 +2,6 @@
 
 use std::path::{Path,PathBuf};
 
-
-use std::fs;
-use std::ptr::null;
-
 use tree_sitter::{Parser, TreeCursor, Node};
 use crate::models::function_call::FunctionCall;
 use crate::models::import_info::ImportInfo;
@@ -44,7 +40,7 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
 
                 let import_path = resolve_python_import(path, &field_name, root_path);
 
-                result.imports.push(ImportInfo { name: field_name, path: import_path });
+                result.imports.push(ImportInfo { name: field_name, path: import_path, imported_names: vec![] });
             }
             "import_from_statement" => {
                 let import_from = parse_import_from_statement(source, &node, path, root_path);
@@ -61,14 +57,13 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
 
                 let mut return_type: Option<String> = None;
 
-                if let Some(node_return_type) = node.child_by_field_name("type") {
+                if let Some(node_return_type) = node.child_by_field_name("return_type") {
                     return_type = Some(node_return_type.utf8_text(source.as_bytes()).unwrap().to_string());
-                    println!("{:?}", return_type);
                 }
 
                 let mut function_calls: Option<Vec<FunctionCall>> = None;
                 if let Some(node_return_body) = node.child_by_field_name("body") {
-                    let calls = find_calls(source, &node_return_body);
+                    let calls = find_calls(source, &node_return_body, &result.imports);
                     function_calls = Some(calls);
                 }     
             
@@ -132,8 +127,6 @@ fn parse_import_from_statement(
         .and_then(|n| n.utf8_text(source.as_bytes()).ok())
         .map(|s| s.to_string());
 
-    println!("{:?}", module_name);
-
     let mut file_name: String = String::new();
     if let Some(ref f_name) = module_name {
       file_name = f_name.to_string();
@@ -143,19 +136,19 @@ fn parse_import_from_statement(
 
     let mut cursor = node.walk();
 
-
+    let mut past_import_keyword = false;
     for child in node.children(&mut cursor) {
-          println!("{:?}", child.kind());
         match child.kind() {
-            "dotted_name" => {
-              let text = child.utf8_text(source.as_bytes()).unwrap().to_string();
-              functions.push(text.clone());
-            },
+            "import" => { past_import_keyword = true; }
+            "dotted_name" | "identifier" if past_import_keyword => {
+                let text = child.utf8_text(source.as_bytes()).unwrap().to_string();
+                functions.push(text);
+            }
             _ => {}
         }
     }
 
-    ImportInfo { name: file_name, path: import_path }
+    ImportInfo { name: file_name, path: import_path, imported_names: functions }
 }
 
 
@@ -216,7 +209,7 @@ fn get_function_parameters<'a>(source: &'a str, node: &tree_sitter::Node<'a>) ->
     params
 }
 
-fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<FunctionCall> {
+fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[ImportInfo]) -> Vec<FunctionCall> {
     let mut cursor = node.walk();
     let mut calls: Vec<FunctionCall> = vec![];
 
@@ -234,14 +227,17 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>) -> Vec<Function
                       import_name = Some(import_fuction_name.get(0).unwrap().to_string());
                     } else {
                       function_name = name.clone();
+                      import_name = imports.iter()
+                        .find(|i| i.imported_names.contains(&name))
+                        .map(|i| i.name.clone());
                     }
 
                     calls.push(FunctionCall { name: function_name, import_name });
                 }
-                calls.extend(find_calls(source, &child))
+                calls.extend(find_calls(source, &child, imports))
             }
             // Recorrer recursivamente el resto del cuerpo
-            _ => calls.extend(find_calls(source, &child)),
+            _ => calls.extend(find_calls(source, &child, imports)),
         }
     }
 
