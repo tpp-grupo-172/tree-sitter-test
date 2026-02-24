@@ -1,0 +1,204 @@
+module: 'import math
+from math import pi
+import numpy as np
+import sys, os
+
+def area_of_circle(r = 0):
+    return pi * r * r
+
+def hypotenuse(a: int, b: str = "hola") -> float:
+    return math.sqrt(a**2 + b**2)
+
+def volume(a, b: int, c: int = 0, d = 2) -> float:
+    return a*b*c*d
+class Geometry:
+    def __init__(self, shape_name: str):
+        self.shape_name = shape_name
+
+    def describe(self):
+        print(f"Shape: {self.shape_name}")
+
+if __name__ == "__main__":
+    g = Geometry("circle")
+    g.describe()
+    print("Area:", area_of_circle(5))
+'
+  import_statement: 'import math'
+    dotted_name: 'math'
+      identifier: 'math'
+  import_from_statement: 'from math import pi'
+    dotted_name: 'math'
+      identifier: 'math'
+    dotted_name: 'pi'
+      identifier: 'pi'
+  import_statement: 'import numpy as np'
+    aliased_import: 'numpy as np'
+      dotted_name: 'numpy'
+        identifier: 'numpy'
+      identifier: 'np'
+  import_statement: 'import sys, os'
+    dotted_name: 'sys'
+      identifier: 'sys'
+    dotted_name: 'os'
+      identifier: 'os'
+  function_definition: 'def area_of_circle(r = 0):
+    return pi * r * r'
+    identifier: 'area_of_circle'
+    parameters: '(r = 0)'
+      default_parameter: 'r = 0'
+        identifier: 'r'
+        integer: '0'
+    block: 'return pi * r * r'
+      return_statement: 'return pi * r * r'
+        binary_operator: 'pi * r * r'
+          binary_operator: 'pi * r'
+            identifier: 'pi'
+            identifier: 'r'
+          identifier: 'r'
+  function_definition: 'def hypotenuse(a: int, b: str = "hola") -> float:
+    return math.sqrt(a**2 + b**2)'
+    identifier: 'hypotenuse'
+    parameters: '(a: int, b: str = "hola")'
+      typed_parameter: 'a: int'
+        identifier: 'a'
+        type: 'int'
+          identifier: 'int'
+      typed_default_parameter: 'b: str = "hola"'
+        identifier: 'b'
+        type: 'str'
+          identifier: 'str'
+        string: '"hola"'
+          string_start: '"'
+          string_content: 'hola'
+          string_end: '"'
+    type: 'float'
+      identifier: 'float'
+    block: 'return math.sqrt(a**2 + b**2)'
+      return_statement: 'return math.sqrt(a**2 + b**2)'
+        call: 'math.sqrt(a**2 + b**2)'
+          attribute: 'math.sqrt'
+            identifier: 'math'
+            identifier: 'sqrt'
+          argument_list: '(a**2 + b**2)'
+            binary_operator: 'a**2 + b**2'
+              binary_operator: 'a**2'
+                identifier: 'a'
+                integer: '2'
+              binary_operator: 'b**2'
+                identifier: 'b'
+                integer: '2'
+  function_definition: 'def volume(a, b: int, c: int = 0, d = 2) -> float:
+    return a*b*c*d'
+    identifier: 'volume'
+    parameters: '(a, b: int, c: int = 0, d = 2)'
+      identifier: 'a'
+      typed_parameter: 'b: int'
+        identifier: 'b'
+        type: 'int'
+          identifier: 'int'
+      typed_default_parameter: 'c: int = 0'
+        identifier: 'c'
+        type: 'int'
+          identifier: 'int'
+        integer: '0'
+      default_parameter: 'd = 2'
+        identifier: 'd'
+        integer: '2'
+    type: 'float'
+      identifier: 'float'
+    block: 'return a*b*c*d'
+      return_statement: 'return a*b*c*d'
+        binary_operator: 'a*b*c*d'
+          binary_operator: 'a*b*c'
+            binary_operator: 'a*b'
+              identifier: 'a'
+              identifier: 'b'
+            identifier: 'c'
+          identifier: 'd'
+  class_definition: 'class Geometry:
+    def __init__(self, shape_name: str):
+        self.shape_name = shape_name
+
+    def describe(self):
+        print(f"Shape: {self.shape_name}")'
+    identifier: 'Geometry'
+    block: 'def __init__(self, shape_name: str):
+        self.shape_name = shape_name
+
+    def describe(self):
+        print(f"Shape: {self.shape_name}")'
+      function_definition: 'def __init__(self, shape_name: str):
+        self.shape_name = shape_name'
+        identifier: '__init__'
+        parameters: '(self, shape_name: str)'
+          identifier: 'self'
+          typed_parameter: 'shape_name: str'
+            identifier: 'shape_name'
+            type: 'str'
+              identifier: 'str'
+        block: 'self.shape_name = shape_name'
+          expression_statement: 'self.shape_name = shape_name'
+            assignment: 'self.shape_name = shape_name'
+              attribute: 'self.shape_name'
+                identifier: 'self'
+                identifier: 'shape_name'
+              identifier: 'shape_name'
+      function_definition: 'def describe(self):
+        print(f"Shape: {self.shape_name}")'
+        identifier: 'describe'
+        parameters: '(self)'
+          identifier: 'self'
+        block: 'print(f"Shape: {self.shape_name}")'
+          expression_statement: 'print(f"Shape: {self.shape_name}")'
+            call: 'print(f"Shape: {self.shape_name}")'
+              identifier: 'print'
+              argument_list: '(f"Shape: {self.shape_name}")'
+                string: 'f"Shape: {self.shape_name}"'
+                  string_start: 'f"'
+                  string_content: 'Shape: '
+                  interpolation: '{self.shape_name}'
+                    attribute: 'self.shape_name'
+                      identifier: 'self'
+                      identifier: 'shape_name'
+                  string_end: '"'
+  if_statement: 'if __name__ == "__main__":
+    g = Geometry("circle")
+    g.describe()
+    print("Area:", area_of_circle(5))'
+    comparison_operator: '__name__ == "__main__"'
+      identifier: '__name__'
+      string: '"__main__"'
+        string_start: '"'
+        string_content: '__main__'
+        string_end: '"'
+    block: 'g = Geometry("circle")
+    g.describe()
+    print("Area:", area_of_circle(5))'
+      expression_statement: 'g = Geometry("circle")'
+        assignment: 'g = Geometry("circle")'
+          identifier: 'g'
+          call: 'Geometry("circle")'
+            identifier: 'Geometry'
+            argument_list: '("circle")'
+              string: '"circle"'
+                string_start: '"'
+                string_content: 'circle'
+                string_end: '"'
+      expression_statement: 'g.describe()'
+        call: 'g.describe()'
+          attribute: 'g.describe'
+            identifier: 'g'
+            identifier: 'describe'
+          argument_list: '()'
+      expression_statement: 'print("Area:", area_of_circle(5))'
+        call: 'print("Area:", area_of_circle(5))'
+          identifier: 'print'
+          argument_list: '("Area:", area_of_circle(5))'
+            string: '"Area:"'
+              string_start: '"'
+              string_content: 'Area:'
+              string_end: '"'
+            call: 'area_of_circle(5)'
+              identifier: 'area_of_circle'
+              argument_list: '(5)'
+                integer: '5'
