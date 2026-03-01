@@ -6,4 +6,5 @@ use serde::Serialize;
 pub struct ImportInfo {
     pub name: String,
     pub path: Option<PathBuf>,
+    pub imported_names: Vec<String>,
 }

@@ -2,33 +2,24 @@
   "imports": [
     {
       "name": "math",
-      "path": "/Users/federicojaleh/Documents/GitHub/tree-sitter-test/input-files/math.py"
+      "path": "/home/camigeneral/Desktop/fiuba/tpp/tree-sitter-test/input-files/math.py",
+      "imported_names": []
     },
     {
-      "name": "file1",
-      "path": "/Users/federicojaleh/Documents/GitHub/tree-sitter-test/input-files/file1.py"
+      "name": "math_utils",
+      "path": "/home/camigeneral/Desktop/fiuba/tpp/tree-sitter-test/input-files/math_utils.py",
+      "imported_names": []
+    },
+    {
+      "name": "math_utils",
+      "path": "/home/camigeneral/Desktop/fiuba/tpp/tree-sitter-test/input-files/math_utils.py",
+      "imported_names": [
+        "add",
+        "subtract"
+      ]
     }
   ],
   "functions": [
-    {
-      "name": "saludar",
-      "parameters": [],
-      "return_type": null,
-      "function_calls": [
-        {
-          "name": "hola",
-          "import_name": null
-        },
-        {
-          "name": "count",
-          "import_name": "chau()"
-        },
-        {
-          "name": "chau",
-          "import_name": null
-        }
-      ]
-    },
     {
       "name": "area_of_circle",
       "parameters": [
@@ -55,7 +46,7 @@
           "default_value": "\"hola\""
         }
       ],
-      "return_type": null,
+      "return_type": "float",
       "function_calls": [
         {
           "name": "sqrt",
@@ -87,8 +78,52 @@
           "default_value": "2"
         }
       ],
-      "return_type": null,
+      "return_type": "float",
       "function_calls": []
+    },
+    {
+      "name": "add_values",
+      "parameters": [
+        {
+          "name": "x",
+          "param_type": "int",
+          "default_value": null
+        },
+        {
+          "name": "y",
+          "param_type": "int",
+          "default_value": null
+        }
+      ],
+      "return_type": "int",
+      "function_calls": [
+        {
+          "name": "add",
+          "import_name": "math_utils"
+        }
+      ]
+    },
+    {
+      "name": "subtract_values",
+      "parameters": [
+        {
+          "name": "x",
+          "param_type": "int",
+          "default_value": null
+        },
+        {
+          "name": "y",
+          "param_type": "int",
+          "default_value": null
+        }
+      ],
+      "return_type": "int",
+      "function_calls": [
+        {
+          "name": "subtract",
+          "import_name": "math_utils"
+        }
+      ]
     }
   ],
   "classes": [
@@ -121,10 +156,32 @@
               "default_value": null
             }
           ],
-          "return_type": null,
+          "return_type": "None",
           "function_calls": [
             {
               "name": "print",
+              "import_name": null
+            }
+          ]
+        },
+        {
+          "name": "area",
+          "parameters": [
+            {
+              "name": "self",
+              "param_type": null,
+              "default_value": null
+            },
+            {
+              "name": "r",
+              "param_type": "float",
+              "default_value": "0"
+            }
+          ],
+          "return_type": "float",
+          "function_calls": [
+            {
+              "name": "area_of_circle",
               "import_name": null
             }
           ]
