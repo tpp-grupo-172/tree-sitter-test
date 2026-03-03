@@ -5,7 +5,7 @@ from math_utils import add, subtract
 def area_of_circle(r = 0):
     return math.pi * r * r
 
-def hypotenuse(a: int, b: str = "hola") -> float:
+def hypotenuse(a: int, b: int = 1) -> float:
     return math.sqrt(a**2 + b**2)
 
 def volume(a, b: int, c: int = 0, d = 2) -> float:
