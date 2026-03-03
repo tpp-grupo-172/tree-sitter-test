@@ -49,6 +49,10 @@ fn analyze_node(
         let kind = node.kind();
 
         match kind {
+            "import_statement" => {
+                let imports = parse_import_statement(source, &node, path, root_path);
+                result.imports.extend(imports);
+            }
             "function_declaration" => {
                 let func = parse_function(source, &node, &result.imports);
                 if let Some(class) = current_class.as_deref_mut() {
@@ -95,6 +99,79 @@ fn analyze_node(
             break;
         }
     }
+}
+
+
+fn parse_import_statement(
+    source: &str,
+    node: &Node,
+    current_file: &Path,
+    project_roots: &[PathBuf],
+) -> Vec<ImportInfo> {
+    let mut results = vec![];
+
+    let module_name = node.children(&mut node.walk())
+        .find(|c| c.kind() == "string")
+        .and_then(|n| n.child_by_field_name("fragment")
+            .or_else(|| n.named_children(&mut n.walk()).find(|c| c.kind() == "string_fragment")))
+        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+        .unwrap_or("")
+        .to_string();
+
+    let import_path = resolve_ts_import(current_file, &module_name, project_roots);
+
+    let Some(clause) = node.children(&mut node.walk()).find(|c| c.kind() == "import_clause") else {
+        results.push(ImportInfo { name: module_name, path: import_path, imported_names: vec![] });
+        return results;
+    };
+
+    let mut cursor = clause.walk();
+    for child in clause.named_children(&mut cursor) {
+        match child.kind() {
+            "named_imports" => {
+                let mut imported_names = vec![];
+                let mut inner = child.walk();
+                for specifier in child.named_children(&mut inner) {
+                    if specifier.kind() == "import_specifier" {
+                        if let Some(id) = specifier.named_children(&mut specifier.walk())
+                            .find(|c| c.kind() == "identifier")
+                        {
+                            if let Ok(name) = id.utf8_text(source.as_bytes()) {
+                                imported_names.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+                let parsed_name = module_name
+                    .trim_start_matches("./")
+                    .trim_start_matches("../")
+                    .split('/')
+                    .last()
+                    .unwrap_or(&module_name)
+                    .to_string();
+                results.push(ImportInfo {
+                    name: parsed_name,
+                    path: import_path.clone(),
+                    imported_names,
+                });
+            }
+            "namespace_import" => {
+                let alias = child.named_children(&mut child.walk())
+                    .find(|c| c.kind() == "identifier")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .unwrap_or("")
+                    .to_string();
+                results.push(ImportInfo {
+                    name: alias,
+                    path: import_path.clone(),
+                    imported_names: vec![],
+                });
+            }
+            _ => {}
+        }
+    }
+
+    results
 }
 
 
@@ -190,4 +267,39 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
     }
 
     calls
+}
+
+
+fn resolve_ts_import(current_file: &Path, module: &str, project_roots: &[PathBuf]) -> Option<PathBuf> {
+    if module.starts_with('.') {
+        let dir = current_file.parent()?;
+        let base = dir.join(module);
+        return find_ts_module(&base);
+    }
+
+    for root in project_roots {
+        let base = root.join(module);
+        if let Some(found) = find_ts_module(&base) {
+            return Some(found);
+        }
+    }
+
+    None
+}
+
+
+fn find_ts_module(base: &Path) -> Option<PathBuf> {
+    for ext in &["ts", "tsx", "js", "jsx"] {
+        let candidate = base.with_extension(ext);
+        if candidate.exists() {
+            return candidate.canonicalize().ok();
+        }
+    }
+
+    let index = base.join("index.ts");
+    if index.exists() {
+        return index.canonicalize().ok();
+    }
+
+    None
 }
