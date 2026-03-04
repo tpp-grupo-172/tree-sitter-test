@@ -248,7 +248,7 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
 fn print_tree(source: &str, node: Node, indent: usize) {
     let indent_str = " ".repeat(indent);
     let text = node.utf8_text(source.as_bytes()).unwrap_or("");
-    println!("{}{}: '{}'", indent_str, node.kind(), text);
+    eprintln!("{}{}: '{}'", indent_str, node.kind(), text);
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         print_tree(source, child, indent + 2);
