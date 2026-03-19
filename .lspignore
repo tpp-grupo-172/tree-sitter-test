@@ -1,0 +1,4 @@
+# Solo analizar input-files/ — ignorar todo lo demás
+parsed-files/
+src/
+target/
