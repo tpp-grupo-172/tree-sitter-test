@@ -1,0 +1,35 @@
+{
+  "imports": [],
+  "functions": [],
+  "classes": [
+    {
+      "name": "MathClass",
+      "methods": [
+        {
+          "name": "__init__",
+          "parameters": [
+            {
+              "name": "self",
+              "param_type": null,
+              "default_value": null
+            }
+          ],
+          "return_type": null,
+          "function_calls": []
+        },
+        {
+          "name": "pi",
+          "parameters": [
+            {
+              "name": "self",
+              "param_type": null,
+              "default_value": null
+            }
+          ],
+          "return_type": null,
+          "function_calls": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,19 @@
 {
-  "imports": [],
+  "imports": [
+    {
+      "name": "math_utils",
+      "path": "/home/camigeneral/Desktop/fiuba/tpp/tree-sitter-test/input-files/math_utils.ts",
+      "imported_names": []
+    },
+    {
+      "name": "math_utils",
+      "path": "/home/camigeneral/Desktop/fiuba/tpp/tree-sitter-test/input-files/math_utils.ts",
+      "imported_names": [
+        "add",
+        "subtract"
+      ]
+    }
+  ],
   "functions": [
     {
       "name": "areaOfCircle",
@@ -80,7 +94,7 @@
       "function_calls": [
         {
           "name": "add",
-          "import_name": null
+          "import_name": "math_utils"
         }
       ]
     },
