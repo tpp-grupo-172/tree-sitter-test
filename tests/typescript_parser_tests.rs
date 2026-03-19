@@ -165,3 +165,85 @@ function compute(x: number, y: number): number {
     assert!(calls.iter().any(|c| c.name == "subtract" && c.import_name.as_deref() == Some("math_utils")));
 }
 
+// ---------------------------- Classes ----------------------------
+
+#[test]
+fn test_simple_class() {
+    let source = "\
+class MyClass {
+    myMethod(): void {}
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.classes.len(), 1);
+    assert_eq!(result.classes[0].name, "MyClass");
+    assert_eq!(result.classes[0].methods.len(), 1);
+    assert_eq!(result.classes[0].methods[0].name, "myMethod");
+}
+
+#[test]
+fn test_class_method_with_typed_params() {
+    let source = "\
+class Calculator {
+    multiply(a: number, b: number): number {
+        return a * b;
+    }
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    let method = &result.classes[0].methods[0];
+    assert_eq!(method.name, "multiply");
+    assert_eq!(method.return_type.as_deref(), Some("number"));
+    assert_eq!(method.parameters.len(), 2);
+    assert_eq!(method.parameters[0].name, "a");
+    assert_eq!(method.parameters[0].param_type.as_deref(), Some("number"));
+    assert_eq!(method.parameters[1].name, "b");
+    assert_eq!(method.parameters[1].param_type.as_deref(), Some("number"));
+}
+
+#[test]
+fn test_class_method_call_resolved() {
+    let source = "\
+import { subtract } from './math_utils';
+class MyClass {
+    myMethod(x: number, y: number): number {
+        return subtract(x, y);
+    }
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    let calls = result.classes[0].methods[0].function_calls.as_ref().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "subtract");
+    assert_eq!(calls[0].import_name.as_deref(), Some("math_utils"));
+}
+
+#[test]
+fn test_class_not_added_to_functions() {
+    let source = "\
+class MyClass {
+    myMethod(): void {}
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert!(result.functions.is_empty());
+    assert_eq!(result.classes.len(), 1);
+}
+
+#[test]
+fn test_class_with_constructor() {
+    let source = "\
+class Geometry {
+    shapeName: string;
+    constructor(shapeName: string) {
+        this.shapeName = shapeName;
+    }
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.classes[0].name, "Geometry");
+    let constructor = result.classes[0].methods.iter().find(|m| m.name == "constructor");
+    assert!(constructor.is_some());
+    assert_eq!(constructor.unwrap().parameters[0].name, "shapeName");
+    assert_eq!(constructor.unwrap().parameters[0].param_type.as_deref(), Some("string"));
+}
