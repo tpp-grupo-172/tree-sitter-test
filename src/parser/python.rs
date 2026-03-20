@@ -7,7 +7,7 @@ use crate::models::function_call::FunctionCall;
 use crate::models::import_info::ImportInfo;
 use crate::models::{analysis_result::AnalysisResult, class_info::ClassInfo, function_info::FunctionInfo, parameter_info::ParameterInfo};
 
-pub fn parse_file(source: &str, path: &Path, root_path: &[PathBuf]) -> AnalysisResult {
+pub fn parse(source: &str, path: &Path, root_path: &[PathBuf]) -> AnalysisResult {
     let mut parser = Parser::new();
     parser.set_language(tree_sitter_python::language()).unwrap();
     let tree = parser.parse(source, None).unwrap();
@@ -114,6 +114,7 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
     }
 }
 
+
 fn parse_import_from_statement(
     source: &str,
     node: &tree_sitter::Node,
@@ -209,6 +210,7 @@ fn get_function_parameters<'a>(source: &'a str, node: &tree_sitter::Node<'a>) ->
     params
 }
 
+
 fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[ImportInfo]) -> Vec<FunctionCall> {
     let mut cursor = node.walk();
     let mut calls: Vec<FunctionCall> = vec![];
@@ -244,6 +246,7 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
     calls
 }
  
+
 #[allow(dead_code)]
 fn print_tree(source: &str, node: Node, indent: usize) {
     let indent_str = " ".repeat(indent);
@@ -299,7 +302,6 @@ fn resolve_relative_python_import(current_file: &Path, import_path: &str) -> Opt
 }
 
 
-
 fn resolve_absolute_python_import(
     import_path: &str,
     project_roots: &[PathBuf],
@@ -315,6 +317,7 @@ fn resolve_absolute_python_import(
 
     None
 }
+
 
 fn find_python_module(base: &Path) -> Option<PathBuf> {
     let file = base.with_extension("py");
