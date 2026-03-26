@@ -247,3 +247,39 @@ class Geometry {
     assert_eq!(constructor.unwrap().parameters[0].name, "shapeName");
     assert_eq!(constructor.unwrap().parameters[0].param_type.as_deref(), Some("string"));
 }
+
+// ---------------------------- Line Numbers ----------------------------
+
+#[test]
+fn test_ts_function_line_number() {
+    let source = "function foo(): void {}\n\nfunction bar(): void {}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.functions[0].line, 1);
+    assert_eq!(result.functions[1].line, 3);
+}
+
+#[test]
+fn test_ts_class_and_method_line_number() {
+    let source = "\
+class MyClass {
+    myMethod(): void {}
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.classes[0].line, 1);
+    assert_eq!(result.classes[0].methods[0].line, 2);
+}
+
+#[test]
+fn test_ts_function_call_line_number() {
+    let source = "\
+import { add } from './math_utils';
+function compute(x: number, y: number): number {
+    return add(x, y);
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    let calls = result.functions[0].function_calls.as_ref().unwrap();
+    assert_eq!(calls[0].line, 3);
+}

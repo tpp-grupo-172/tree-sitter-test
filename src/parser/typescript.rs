@@ -70,6 +70,7 @@ fn analyze_node(
 
                 let mut class_info = ClassInfo {
                     name,
+                    line: node.start_position().row + 1,
                     methods: vec![],
                 };
 
@@ -121,7 +122,7 @@ fn parse_import_statement(
     let import_path = resolve_ts_import(current_file, &module_name, project_roots);
 
     let Some(clause) = node.children(&mut node.walk()).find(|c| c.kind() == "import_clause") else {
-        results.push(ImportInfo { name: module_name, path: import_path, imported_names: vec![] });
+        results.push(ImportInfo { name: module_name, line: node.start_position().row + 1, path: import_path, imported_names: vec![] });
         return results;
     };
 
@@ -151,6 +152,7 @@ fn parse_import_statement(
                     .to_string();
                 results.push(ImportInfo {
                     name: parsed_name,
+                    line: node.start_position().row + 1, 
                     path: import_path.clone(),
                     imported_names,
                 });
@@ -163,6 +165,7 @@ fn parse_import_statement(
                     .to_string();
                 results.push(ImportInfo {
                     name: alias,
+                    line: node.start_position().row + 1, 
                     path: import_path.clone(),
                     imported_names: vec![],
                 });
@@ -191,7 +194,7 @@ fn parse_function(source: &str, node: &Node, imports: &[ImportInfo]) -> Function
     let function_calls = node.child_by_field_name("body")
         .map(|body| find_calls(source, &body, imports));
 
-    FunctionInfo { name, parameters, return_type, function_calls }
+    FunctionInfo { name, line: node.start_position().row + 1, parameters, return_type, function_calls }
 }
 
 
@@ -248,14 +251,14 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
                                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                                 .unwrap_or("")
                                 .to_string();
-                            calls.push(FunctionCall { name: property, import_name: Some(object) });
+                            calls.push(FunctionCall { name: property, line: node.start_position().row + 1, import_name: Some(object) });
                         }
                         "identifier" => {
                             let name = func_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                             let import_name = imports.iter()
                                 .find(|i| i.imported_names.contains(&name))
                                 .map(|i| i.name.clone());
-                            calls.push(FunctionCall { name, import_name });
+                            calls.push(FunctionCall { name, line: node.start_position().row + 1, import_name });
                         }
                         _ => {}
                     }
