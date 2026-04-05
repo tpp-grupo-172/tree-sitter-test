@@ -40,7 +40,7 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
 
                 let import_path = resolve_python_import(path, &field_name, root_path);
 
-                result.imports.push(ImportInfo { name: field_name, path: import_path, imported_names: vec![] });
+                result.imports.push(ImportInfo { name: field_name, line: node.start_position().row + 1, path: import_path, imported_names: vec![] });
             }
             "import_from_statement" => {
                 let import_from = parse_import_from_statement(source, &node, path, root_path);
@@ -91,6 +91,7 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
             
                 let mut class_info = ClassInfo {
                     name,
+                    line: node.start_position().row + 1,
                     methods: Vec::new(),
                 };
             
@@ -151,7 +152,7 @@ fn parse_import_from_statement(
         }
     }
 
-    ImportInfo { name: file_name, path: import_path, imported_names: functions }
+    ImportInfo { name: file_name, line: node.start_position().row + 1, path: import_path, imported_names: functions }
 }
 
 
@@ -236,7 +237,7 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
                         .map(|i| i.name.clone());
                     }
 
-                    calls.push(FunctionCall { name: function_name, import_name });
+                    calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name });
                 }
                 calls.extend(find_calls(source, &child, imports))
             }

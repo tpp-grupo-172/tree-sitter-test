@@ -219,3 +219,38 @@ class MyClass:
     assert!(result.functions.is_empty());
     assert_eq!(result.classes.len(), 1);
 }
+
+// ---------------------------- Line Numbers ----------------------------
+
+#[test]
+fn test_function_line_number() {
+    let source = "def foo():\n    pass\n\ndef bar():\n    pass";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.functions[0].line, 1);
+    assert_eq!(result.functions[1].line, 4);
+}
+
+#[test]
+fn test_class_and_method_line_number() {
+    let source = "\
+class MyClass:
+    def my_method(self):
+        pass";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.classes[0].line, 1);
+    assert_eq!(result.classes[0].methods[0].line, 2);
+}
+
+#[test]
+fn test_function_call_line_number() {
+    let source = "\
+from math_utils import add
+def compute(x, y):
+    return add(x, y)";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    let calls = result.functions[0].function_calls.as_ref().unwrap();
+    assert_eq!(calls[0].line, 3);
+}
