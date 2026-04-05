@@ -69,6 +69,8 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
             
                 let func_info = FunctionInfo {
                     name,
+                    line: node.start_position().row + 1,
+                    end_line: node.end_position().row + 1,
                     parameters,
                     return_type: return_type,
                     function_calls
