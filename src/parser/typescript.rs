@@ -23,6 +23,8 @@ pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], is_jsx: bool) -> 
     let tree = parser.parse(source, None).unwrap();
     let root_node = tree.root_node();
 
+    print_tree(source, root_node, 0);
+
     let mut result = AnalysisResult {
         imports: vec![],
         functions: vec![],
@@ -88,10 +90,89 @@ fn analyze_node(
                     class.methods.push(func);
                 }
             }
+            "public_field_definition" => {
+                if let Some(arrow) = node.named_children(&mut node.walk())
+                    .find(|c| c.kind() == "arrow_function")
+                {
+                    let name = node.named_children(&mut node.walk())
+                        .find(|c| c.kind() == "property_identifier")
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .unwrap_or("<unnamed>")
+                        .to_string();
+
+                    let parameters = parse_parameters(source, &arrow);
+
+                    let return_type = arrow.child_by_field_name("return_type")
+                        .and_then(|n| n.named_children(&mut n.walk()).next())
+                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                        .map(|s| s.to_string());
+
+                    let function_calls = arrow.named_children(&mut arrow.walk())
+                        .find(|c| c.kind() == "statement_block")
+                        .map(|body| find_calls(source, &body, &result.imports))
+                        .unwrap_or_else(|| find_calls(source, &arrow, &result.imports));
+
+                    let func = FunctionInfo {
+                        name,
+                        line: node.start_position().row + 1,
+                        end_line: node.end_position().row + 1,
+                        parameters,
+                        return_type,
+                        function_calls: Some(function_calls),
+                    };
+
+                    if let Some(class) = current_class.as_deref_mut() {
+                        class.methods.push(func);
+                    }
+                }
+            }
+            "lexical_declaration" => {
+                let mut decl_cursor = node.walk();
+                for child in node.named_children(&mut decl_cursor) {
+                    if child.kind() == "variable_declarator" {
+                        let name = child.named_children(&mut child.walk())
+                            .find(|c| c.kind() == "identifier")
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .unwrap_or("<unnamed>")
+                            .to_string();
+
+                        if let Some(arrow) = child.named_children(&mut child.walk())
+                            .find(|c| c.kind() == "arrow_function")
+                        {
+                            let parameters = parse_parameters(source, &arrow);
+
+                            let return_type = arrow.child_by_field_name("return_type")
+                                .and_then(|n| n.named_children(&mut n.walk()).next())
+                                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                .map(|s| s.to_string());
+
+                            let function_calls = arrow.named_children(&mut arrow.walk())
+                                .find(|c| c.kind() == "statement_block")
+                                .map(|body| find_calls(source, &body, &result.imports))
+                                .unwrap_or_else(|| find_calls(source, &arrow, &result.imports));
+
+                            let func = FunctionInfo {
+                                name,
+                                line: child.start_position().row + 1,
+                                end_line: child.end_position().row + 1,
+                                parameters,
+                                return_type,
+                                function_calls: Some(function_calls),
+                            };
+
+                            if let Some(class) = current_class.as_deref_mut() {
+                                class.methods.push(func);
+                            } else {
+                                result.functions.push(func);
+                            }
+                        }
+                    }
+                }
+            }
             _ => {}
         }
 
-        if kind != "class_declaration" && kind != "method_definition" && cursor.goto_first_child() {
+        if kind != "class_declaration" && kind != "method_definition" && kind != "public_field_definition" && cursor.goto_first_child() {
             analyze_node(path, root_path, source, cursor, result, current_class);
             cursor.goto_parent();
         }
@@ -305,4 +386,15 @@ fn find_ts_module(base: &Path) -> Option<PathBuf> {
     }
 
     None
+}
+
+#[allow(dead_code)]
+fn print_tree(source: &str, node: Node, indent: usize) {
+    let indent_str = " ".repeat(indent);
+    let text = node.utf8_text(source.as_bytes()).unwrap_or("");
+    eprintln!("{}{}: '{}'", indent_str, node.kind(), text);
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        print_tree(source, child, indent + 2);
+    }
 }

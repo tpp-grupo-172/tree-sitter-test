@@ -165,6 +165,18 @@ function compute(x: number, y: number): number {
     assert!(calls.iter().any(|c| c.name == "subtract" && c.import_name.as_deref() == Some("math_utils")));
 }
 
+#[test]
+fn test_arrow_function_top_level() {
+    let source = "const add = (a: number, b: number): number => a + b;";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.functions.len(), 1);
+    assert_eq!(result.functions[0].name, "add");
+    assert_eq!(result.functions[0].return_type.as_deref(), Some("number"));
+    assert_eq!(result.functions[0].parameters.len(), 2);
+    assert_eq!(result.functions[0].parameters[0].name, "a");
+}
+
 // ---------------------------- Classes ----------------------------
 
 #[test]
@@ -246,6 +258,19 @@ class Geometry {
     assert!(constructor.is_some());
     assert_eq!(constructor.unwrap().parameters[0].name, "shapeName");
     assert_eq!(constructor.unwrap().parameters[0].param_type.as_deref(), Some("string"));
+}
+
+#[test]
+fn test_arrow_function_class_field() {
+    let source = "\
+class Calculator {
+    add = (a: number, b: number): number => a + b;
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.classes[0].methods.len(), 1);
+    assert_eq!(result.classes[0].methods[0].name, "add");
+    assert_eq!(result.classes[0].methods[0].return_type.as_deref(), Some("number"));
 }
 
 // ---------------------------- Line Numbers ----------------------------
