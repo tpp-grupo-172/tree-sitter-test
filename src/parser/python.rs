@@ -5,6 +5,7 @@ use std::path::{Path,PathBuf};
 use tree_sitter::{Parser, TreeCursor, Node};
 use crate::models::function_call::FunctionCall;
 use crate::models::import_info::ImportInfo;
+use crate::models::local_variable::LocalVariable;
 use crate::models::{analysis_result::AnalysisResult, class_info::ClassInfo, function_info::FunctionInfo, parameter_info::ParameterInfo};
 
 pub fn parse(source: &str, path: &Path, root_path: &[PathBuf]) -> AnalysisResult {
@@ -65,7 +66,12 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
                 if let Some(node_return_body) = node.child_by_field_name("body") {
                     let calls = find_calls(source, &node_return_body, &result.imports);
                     function_calls = Some(calls);
-                }     
+                }   
+
+                let mut local_variables: Vec<LocalVariable> = vec![];
+                if let Some(node_body) = node.child_by_field_name("body") {
+                    local_variables = find_local_variables(source, &node_body);
+                }  
             
                 let func_info = FunctionInfo {
                     name,
@@ -73,7 +79,8 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
                     end_line: node.end_position().row + 1,
                     parameters,
                     return_type: return_type,
-                    function_calls
+                    function_calls,
+                    local_variables
                 };
             
                 if let Some(class) = current_class.as_deref_mut() {
@@ -214,6 +221,52 @@ fn get_function_parameters<'a>(source: &'a str, node: &tree_sitter::Node<'a>) ->
 }
 
 
+fn find_local_variables(source: &str, node: &tree_sitter::Node) -> Vec<LocalVariable> {
+    let mut variables: Vec<LocalVariable> = vec![];
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "assignment" => {
+                // lado izquierdo: el nombre de la variable
+                let var_name = child
+                    .child_by_field_name("left")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+
+                // lado derecho: si es una call, extraemos el nombre de la función
+                let assigned_from = child
+                    .child_by_field_name("right")
+                    .filter(|n| n.kind() == "call")
+                    .and_then(|n| n.child_by_field_name("function"))
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| {
+                        // si es obj.method() quedarnos solo con el nombre base
+                        s.split('.').last().unwrap_or(s).to_string()
+                    });
+
+                if let Some(name) = var_name {
+                    variables.push(LocalVariable {
+                        name,
+                        assigned_from,
+                        line: child.start_position().row + 1,
+                    });
+                }
+
+                // recursivo por si hay assignments anidados (if, for, etc.)
+                variables.extend(find_local_variables(source, &child));
+            }
+            // entrar en bloques if/for/while/with
+            "if_statement" | "for_statement" | "while_statement" | "with_statement" | "block" => {
+                variables.extend(find_local_variables(source, &child));
+            }
+            _ => {}
+        }
+    }
+
+    variables
+}
+
 fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[ImportInfo]) -> Vec<FunctionCall> {
     let mut cursor = node.walk();
     let mut calls: Vec<FunctionCall> = vec![];
@@ -237,7 +290,22 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
                         .map(|i| i.name.clone());
                     }
 
-                    calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name });
+                    if let Some(prefix) = import_name {
+                      let is_real_import = imports.iter().any(|i| {
+                          i.name == prefix || 
+                          i.name.ends_with(&format!(".{}", prefix)) ||
+                          i.imported_names.contains(&prefix)
+                      });
+
+                      if is_real_import {
+                        calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name: Some(prefix) });
+                      } else {
+                        calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name: None });
+                      }
+                    } else {
+                      calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name });
+                    }
+
                 }
                 calls.extend(find_calls(source, &child, imports))
             }

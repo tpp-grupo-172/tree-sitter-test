@@ -119,6 +119,7 @@ fn analyze_node(
                         parameters,
                         return_type,
                         function_calls: Some(function_calls),
+                        local_variables: vec![]
                     };
 
                     if let Some(class) = current_class.as_deref_mut() {
@@ -158,6 +159,7 @@ fn analyze_node(
                                 parameters,
                                 return_type,
                                 function_calls: Some(function_calls),
+                                local_variables: vec![]
                             };
 
                             if let Some(class) = current_class.as_deref_mut() {
@@ -275,7 +277,7 @@ fn parse_function(source: &str, node: &Node, imports: &[ImportInfo]) -> Function
     let function_calls = node.child_by_field_name("body")
         .map(|body| find_calls(source, &body, imports));
 
-    FunctionInfo { name, line: node.start_position().row + 1, end_line: node.end_position().row + 1, parameters, return_type, function_calls }
+    FunctionInfo { name, line: node.start_position().row + 1, end_line: node.end_position().row + 1, parameters, return_type, function_calls, local_variables: vec![] }
 }
 
 
