@@ -177,6 +177,34 @@ fn test_arrow_function_top_level() {
     assert_eq!(result.functions[0].parameters[0].name, "a");
 }
 
+
+#[test]
+fn test_async_function() {
+    let source = "\
+async function fetchData(url: string): Promise<string> {
+    return url;
+}";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.functions.len(), 1);
+    assert_eq!(result.functions[0].name, "fetchData");
+    assert_eq!(result.functions[0].return_type.as_deref(), Some("Promise<string>"));
+    assert_eq!(result.functions[0].parameters[0].name, "url");
+}
+
+#[test]
+fn test_const_function_expression() {
+    let source = "const add = function(a: number, b: number): number { return a + b; }";
+    let result = parse_file(source, &dummy_path(), &dummy_roots());
+
+    assert_eq!(result.functions.len(), 1);
+    assert_eq!(result.functions[0].name, "add");
+    assert_eq!(result.functions[0].return_type.as_deref(), Some("number"));
+    assert_eq!(result.functions[0].parameters.len(), 2);
+    assert_eq!(result.functions[0].parameters[0].name, "a");
+    assert_eq!(result.functions[0].parameters[1].name, "b");
+}
+
 // ---------------------------- Classes ----------------------------
 
 #[test]

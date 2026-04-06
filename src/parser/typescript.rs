@@ -23,7 +23,7 @@ pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], is_jsx: bool) -> 
     let tree = parser.parse(source, None).unwrap();
     let root_node = tree.root_node();
 
-    print_tree(source, root_node, 0);
+    // print_tree(source, root_node, 0);
 
     let mut result = AnalysisResult {
         imports: vec![],
@@ -137,7 +137,7 @@ fn analyze_node(
                             .to_string();
 
                         if let Some(arrow) = child.named_children(&mut child.walk())
-                            .find(|c| c.kind() == "arrow_function")
+                            .find(|c| c.kind() == "arrow_function" || c.kind() == "function_expression")
                         {
                             let parameters = parse_parameters(source, &arrow);
 
