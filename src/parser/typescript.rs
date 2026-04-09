@@ -334,14 +334,14 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
                                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                                 .unwrap_or("")
                                 .to_string();
-                            calls.push(FunctionCall { name: property, line: node.start_position().row + 1, import_name: Some(object) });
+                            calls.push(FunctionCall { name: property, line: node.start_position().row + 1, import_name: Some(object), object_name: None });
                         }
                         "identifier" => {
                             let name = func_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                             let import_name = imports.iter()
                                 .find(|i| i.imported_names.contains(&name))
                                 .map(|i| i.name.clone());
-                            calls.push(FunctionCall { name, line: node.start_position().row + 1, import_name });
+                            calls.push(FunctionCall { name, line: node.start_position().row + 1, import_name, object_name: None });
                         }
                         _ => {}
                     }

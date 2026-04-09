@@ -227,6 +227,9 @@ fn find_local_variables(source: &str, node: &tree_sitter::Node) -> Vec<LocalVari
 
     for child in node.children(&mut cursor) {
         match child.kind() {
+            "expression_statement" => {
+                variables.extend(find_local_variables(source, &child));
+            }
             "assignment" => {
                 // lado izquierdo: el nombre de la variable
                 let var_name = child
@@ -298,12 +301,12 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
                       });
 
                       if is_real_import {
-                        calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name: Some(prefix) });
+                        calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name: Some(prefix), object_name: None });
                       } else {
-                        calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name: None });
+                        calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name: None, object_name: Some(prefix) });
                       }
                     } else {
-                      calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name });
+                      calls.push(FunctionCall { name: function_name, line: node.start_position().row + 1, import_name, object_name: None });
                     }
 
                 }
