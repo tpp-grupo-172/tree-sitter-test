@@ -3,12 +3,7 @@
 use std::path::{Path, PathBuf};
 use tree_sitter::{Parser, TreeCursor, Node};
 use crate::models::{
-    analysis_result::AnalysisResult,
-    class_info::ClassInfo,
-    function_info::FunctionInfo,
-    function_call::FunctionCall,
-    import_info::ImportInfo,
-    parameter_info::ParameterInfo,
+    analysis_result::AnalysisResult, class_info::ClassInfo, function_call::FunctionCall, function_info::FunctionInfo, import_info::ImportInfo, local_variable::LocalVariable, parameter_info::ParameterInfo
 };
 
 
@@ -277,7 +272,11 @@ fn parse_function(source: &str, node: &Node, imports: &[ImportInfo]) -> Function
     let function_calls = node.child_by_field_name("body")
         .map(|body| find_calls(source, &body, imports));
 
-    FunctionInfo { name, line: node.start_position().row + 1, end_line: node.end_position().row + 1, parameters, return_type, function_calls, local_variables: vec![] }
+    let local_variables = node.child_by_field_name("body")
+        .map(|body| find_local_variables(source, &body))
+        .unwrap_or_default();
+
+    FunctionInfo { name, line: node.start_position().row + 1, end_line: node.end_position().row + 1, parameters, return_type, function_calls, local_variables }
 }
 
 
@@ -334,7 +333,27 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
                                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                                 .unwrap_or("")
                                 .to_string();
-                            calls.push(FunctionCall { name: property, line: node.start_position().row + 1, import_name: Some(object), object_name: None });
+
+                            // Verificar si object es un import real o una variable local
+                            let is_real_import = imports.iter().any(|i| {
+                                i.name == object || i.imported_names.contains(&object)
+                            });
+
+                            if is_real_import {
+                                calls.push(FunctionCall { 
+                                    name: property, 
+                                    line: node.start_position().row + 1, 
+                                    import_name: Some(object), 
+                                    object_name: None 
+                                });
+                            } else {
+                                calls.push(FunctionCall { 
+                                    name: property, 
+                                    line: node.start_position().row + 1, 
+                                    import_name: None, 
+                                    object_name: Some(object)
+                                });
+                            }
                         }
                         "identifier" => {
                             let name = func_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
@@ -355,6 +374,64 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
     calls
 }
 
+fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
+    let mut variables = vec![];
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "lexical_declaration" | "variable_declaration" => {
+                let mut decl_cursor = child.walk();
+                for declarator in child.named_children(&mut decl_cursor) {
+                    if declarator.kind() == "variable_declarator" {
+                        let var_name = declarator.child_by_field_name("name")
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+
+                        let assigned_from = declarator.child_by_field_name("value")
+                            .filter(|n| n.kind() == "call_expression" || n.kind() == "new_expression")
+                            .and_then(|n| {
+                                if n.kind() == "new_expression" {
+                                    // new Product(...) → "Product"
+                                    n.child_by_field_name("constructor")
+                                        .and_then(|c| c.utf8_text(source.as_bytes()).ok())
+                                        .map(|s| s.to_string())
+                                } else {
+                                    // createProduct(...) o obj.createProduct(...)
+                                    n.child_by_field_name("function")
+                                        .and_then(|f| {
+                                            if f.kind() == "member_expression" {
+                                                f.child_by_field_name("property")
+                                            } else {
+                                                Some(f)
+                                            }
+                                        })
+                                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                        .map(|s| s.to_string())
+                                }
+                            });
+
+                        if let Some(name) = var_name {
+                            variables.push(LocalVariable {
+                                name,
+                                assigned_from,
+                                line: declarator.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+                variables.extend(find_local_variables(source, &child));
+            }
+            "statement_block" | "if_statement" | "for_statement" | 
+            "while_statement" | "try_statement" | "block" => {
+                variables.extend(find_local_variables(source, &child));
+            }
+            _ => {}
+        }
+    }
+
+    variables
+}
 
 fn resolve_ts_import(current_file: &Path, module: &str, project_roots: &[PathBuf]) -> Option<PathBuf> {
     if module.starts_with('.') {
