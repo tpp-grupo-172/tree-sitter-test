@@ -4,3 +4,4 @@ pub mod parameter_info;
 pub mod analysis_result;
 pub mod import_info;
 pub mod function_call;
+pub mod local_variable;
