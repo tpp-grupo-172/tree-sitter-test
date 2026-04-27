@@ -7,10 +7,10 @@ use crate::models::function_call::FunctionCall;
 use crate::models::import_info::ImportInfo;
 use crate::models::{analysis_result::AnalysisResult, class_info::ClassInfo, function_info::FunctionInfo, parameter_info::ParameterInfo};
 
-pub fn parse(source: &str, path: &Path, root_path: &[PathBuf]) -> AnalysisResult {
+pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], old_tree: Option<&tree_sitter::Tree>) -> (AnalysisResult, tree_sitter::Tree) {
     let mut parser = Parser::new();
     parser.set_language(tree_sitter_python::language()).unwrap();
-    let tree = parser.parse(source, None).unwrap();
+    let tree = parser.parse(source, old_tree).unwrap();
     let root_node = tree.root_node();
 
     // print_tree(source, root_node, 0);
@@ -23,7 +23,7 @@ pub fn parse(source: &str, path: &Path, root_path: &[PathBuf]) -> AnalysisResult
     let mut none_class: Option<&mut ClassInfo> = None;
     analyze_node(path, root_path, source, &mut root_node.walk(), &mut result, &mut none_class);
 
-    result
+    (result, tree)
 }
 
 

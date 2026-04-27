@@ -12,7 +12,7 @@ use crate::models::{
 };
 
 
-pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], is_jsx: bool) -> AnalysisResult {
+pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], is_jsx: bool, old_tree: Option<&tree_sitter::Tree>) -> (AnalysisResult, tree_sitter::Tree) {
     let mut parser = Parser::new();
     let language = if is_jsx {
         tree_sitter_typescript::language_tsx()
@@ -20,7 +20,7 @@ pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], is_jsx: bool) -> 
         tree_sitter_typescript::language_typescript()
     };
     parser.set_language(language).unwrap();
-    let tree = parser.parse(source, None).unwrap();
+    let tree = parser.parse(source, old_tree).unwrap();
     let root_node = tree.root_node();
 
     // print_tree(source, root_node, 0);
@@ -34,7 +34,7 @@ pub fn parse(source: &str, path: &Path, root_path: &[PathBuf], is_jsx: bool) -> 
     let mut none_class: Option<&mut ClassInfo> = None;
     analyze_node(path, root_path, source, &mut root_node.walk(), &mut result, &mut none_class);
 
-    result
+    (result, tree)
 }
 
 
