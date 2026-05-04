@@ -286,51 +286,86 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
         match child.kind() {
             "call" => {
                 if let Some(func_node) = child.child_by_field_name("function") {
-                    let name = func_node.utf8_text(source.as_bytes()).unwrap().to_string();
                     let call_line = child.start_position().row + 1;
 
-                    let (function_name, import_name, object_name, start_col, end_col) =
-                        if name.contains('.') {
-                            // obj.method() — extraer nombre y columna del nodo attribute
-                            let parts: Vec<&str> = name.splitn(2, '.').collect();
-                            let fn_name = parts.get(1).unwrap_or(&"").to_string();
-                            let prefix = parts.get(0).unwrap_or(&"").to_string();
+                    match func_node.kind() {
+                        "attribute" => {
+                            // foo.bar() o hola().bar() — siempre usamos el nodo hijo para el nombre
+                            let attr_node = func_node.child_by_field_name("attribute");
+                            let func_name = attr_node
+                                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                .unwrap_or("")
+                                .to_string();
+                            let start_col = attr_node.map(|n| n.start_position().column).unwrap_or(0);
+                            let end_col   = attr_node.map(|n| n.end_position().column).unwrap_or(0);
 
-                            let (sc, ec) = if let Some(attr_node) = func_node.child_by_field_name("attribute") {
-                                (attr_node.start_position().column, attr_node.end_position().column)
+                            let obj_node = func_node.child_by_field_name("object");
+                            let obj_kind = obj_node.map(|n| n.kind()).unwrap_or("");
+
+                            if obj_kind == "call" {
+                                // Llamada encadenada: hola().bar()
+                                // Extraer el nombre de la función que precede en la cadena
+                                let chain_source_fn = obj_node
+                                    .and_then(|n| n.child_by_field_name("function"))
+                                    .and_then(|f| {
+                                        if f.kind() == "attribute" {
+                                            f.child_by_field_name("attribute")
+                                        } else {
+                                            Some(f) // identifier
+                                        }
+                                    })
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .map(|s| s.to_string());
+
+                                calls.push(FunctionCall {
+                                    name: func_name,
+                                    line: call_line,
+                                    start_col,
+                                    end_col,
+                                    import_name: None,
+                                    object_name: None,
+                                    chain_source_fn,
+                                });
                             } else {
-                                let sc = func_node.start_position().column + prefix.len() + 1;
-                                (sc, sc + fn_name.len())
-                            };
+                                // obj.method() o module.function() — object es un identificador
+                                let obj_text = obj_node
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .unwrap_or("")
+                                    .to_string();
 
-                            let is_real_import = imports.iter().any(|i| {
-                                i.name == prefix ||
-                                i.name.ends_with(&format!(".{}", prefix)) ||
-                                i.imported_names.contains(&prefix)
-                            });
+                                let is_real_import = imports.iter().any(|i| {
+                                    i.name == obj_text
+                                        || i.name.ends_with(&format!(".{}", obj_text))
+                                        || i.imported_names.contains(&obj_text)
+                                });
 
-                            if is_real_import {
-                                (fn_name, Some(prefix), None, sc, ec)
-                            } else {
-                                (fn_name, None, Some(prefix), sc, ec)
+                                if is_real_import {
+                                    calls.push(FunctionCall {
+                                        name: func_name, line: call_line, start_col, end_col,
+                                        import_name: Some(obj_text), object_name: None, chain_source_fn: None,
+                                    });
+                                } else {
+                                    calls.push(FunctionCall {
+                                        name: func_name, line: call_line, start_col, end_col,
+                                        import_name: None, object_name: Some(obj_text), chain_source_fn: None,
+                                    });
+                                }
                             }
-                        } else {
+                        }
+                        _ => {
+                            // Llamada directa: foo() — identifier u otro
+                            let func_name = func_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                             let import_name = imports.iter()
-                                .find(|i| i.imported_names.contains(&name))
+                                .find(|i| i.imported_names.contains(&func_name))
                                 .map(|i| i.name.clone());
-                            let sc = func_node.start_position().column;
-                            let ec = func_node.end_position().column;
-                            (name, import_name, None, sc, ec)
-                        };
-
-                    calls.push(FunctionCall {
-                        name: function_name,
-                        line: call_line,
-                        start_col,
-                        end_col,
-                        import_name,
-                        object_name,
-                    });
+                            let start_col = func_node.start_position().column;
+                            let end_col   = func_node.end_position().column;
+                            calls.push(FunctionCall {
+                                name: func_name, line: call_line, start_col, end_col,
+                                import_name, object_name: None, chain_source_fn: None,
+                            });
+                        }
+                    }
                 }
                 calls.extend(find_calls(source, &child, imports))
             }

@@ -344,52 +344,72 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
 
                     match func_node.kind() {
                         "member_expression" => {
-                            let object = func_node.child_by_field_name("object")
-                                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                                .unwrap_or("")
-                                .to_string();
                             let prop_node = func_node.child_by_field_name("property");
                             let property = prop_node
                                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                                 .unwrap_or("")
                                 .to_string();
                             let start_col = prop_node.map(|n| n.start_position().column).unwrap_or(0);
-                            let end_col = prop_node.map(|n| n.end_position().column).unwrap_or(0);
+                            let end_col   = prop_node.map(|n| n.end_position().column).unwrap_or(0);
 
-                            let is_real_import = imports.iter().any(|i| {
-                                i.name == object || i.imported_names.contains(&object)
-                            });
+                            let obj_node = func_node.child_by_field_name("object");
+                            let obj_kind = obj_node.map(|n| n.kind()).unwrap_or("");
 
-                            if is_real_import {
+                            if obj_kind == "call_expression" {
+                                // Llamada encadenada: hola().bar()
+                                let chain_source_fn = obj_node
+                                    .and_then(|n| n.child_by_field_name("function"))
+                                    .and_then(|f| {
+                                        if f.kind() == "member_expression" {
+                                            f.child_by_field_name("property")
+                                        } else {
+                                            Some(f) // identifier
+                                        }
+                                    })
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .map(|s| s.to_string());
+
                                 calls.push(FunctionCall {
-                                    name: property,
-                                    line: call_line,
-                                    start_col,
-                                    end_col,
-                                    import_name: Some(object),
-                                    object_name: None,
+                                    name: property, line: call_line, start_col, end_col,
+                                    import_name: None, object_name: None, chain_source_fn,
                                 });
                             } else {
-                                calls.push(FunctionCall {
-                                    name: property,
-                                    line: call_line,
-                                    start_col,
-                                    end_col,
-                                    import_name: None,
-                                    object_name: Some(object),
+                                // obj.method() o module.function()
+                                let object = obj_node
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .unwrap_or("")
+                                    .to_string();
+
+                                let is_real_import = imports.iter().any(|i| {
+                                    i.name == object || i.imported_names.contains(&object)
                                 });
+
+                                if is_real_import {
+                                    calls.push(FunctionCall {
+                                        name: property, line: call_line, start_col, end_col,
+                                        import_name: Some(object), object_name: None, chain_source_fn: None,
+                                    });
+                                } else {
+                                    calls.push(FunctionCall {
+                                        name: property, line: call_line, start_col, end_col,
+                                        import_name: None, object_name: Some(object), chain_source_fn: None,
+                                    });
+                                }
                             }
                         }
-                        "identifier" => {
+                        _ => {
+                            // Llamada directa: foo() — identifier u otro
                             let name = func_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                             let import_name = imports.iter()
                                 .find(|i| i.imported_names.contains(&name))
                                 .map(|i| i.name.clone());
                             let start_col = func_node.start_position().column;
-                            let end_col = func_node.end_position().column;
-                            calls.push(FunctionCall { name, line: call_line, start_col, end_col, import_name, object_name: None });
+                            let end_col   = func_node.end_position().column;
+                            calls.push(FunctionCall {
+                                name, line: call_line, start_col, end_col,
+                                import_name, object_name: None, chain_source_fn: None,
+                            });
                         }
-                        _ => {}
                     }
                 }
                 calls.extend(find_calls(source, &child, imports));
