@@ -6,6 +6,8 @@ pub struct FunctionInfo {
     pub name: String,
     pub line: usize,
     pub end_line: usize,
+    pub name_start_col: usize,
+    pub name_end_col: usize,
     pub parameters: Vec<ParameterInfo>,
     pub return_type: Option<String>,
     pub function_calls: Option<Vec<FunctionCall>>,

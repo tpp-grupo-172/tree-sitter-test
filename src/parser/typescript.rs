@@ -59,15 +59,19 @@ fn analyze_node(
                 }
             }
             "class_declaration" => {
-                let name = node
-                    .child_by_field_name("name")
+                let name_node = node.child_by_field_name("name");
+                let name = name_node
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                     .unwrap_or("<unnamed>")
                     .to_string();
+                let name_start_col = name_node.map(|n| n.start_position().column).unwrap_or(0);
+                let name_end_col = name_node.map(|n| n.end_position().column).unwrap_or(0);
 
                 let mut class_info = ClassInfo {
                     name,
                     line: node.start_position().row + 1,
+                    name_start_col,
+                    name_end_col,
                     methods: vec![],
                 };
 
@@ -89,11 +93,14 @@ fn analyze_node(
                 if let Some(arrow) = node.named_children(&mut node.walk())
                     .find(|c| c.kind() == "arrow_function")
                 {
-                    let name = node.named_children(&mut node.walk())
-                        .find(|c| c.kind() == "property_identifier")
+                    let name_node = node.named_children(&mut node.walk())
+                        .find(|c| c.kind() == "property_identifier");
+                    let name = name_node
                         .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                         .unwrap_or("<unnamed>")
                         .to_string();
+                    let name_start_col = name_node.map(|n| n.start_position().column).unwrap_or(0);
+                    let name_end_col = name_node.map(|n| n.end_position().column).unwrap_or(0);
 
                     let parameters = parse_parameters(source, &arrow);
 
@@ -111,6 +118,8 @@ fn analyze_node(
                         name,
                         line: node.start_position().row + 1,
                         end_line: node.end_position().row + 1,
+                        name_start_col,
+                        name_end_col,
                         parameters,
                         return_type,
                         function_calls: Some(function_calls),
@@ -126,11 +135,14 @@ fn analyze_node(
                 let mut decl_cursor = node.walk();
                 for child in node.named_children(&mut decl_cursor) {
                     if child.kind() == "variable_declarator" {
-                        let name = child.named_children(&mut child.walk())
-                            .find(|c| c.kind() == "identifier")
+                        let name_node = child.named_children(&mut child.walk())
+                            .find(|c| c.kind() == "identifier");
+                        let name = name_node
                             .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                             .unwrap_or("<unnamed>")
                             .to_string();
+                        let name_start_col = name_node.map(|n| n.start_position().column).unwrap_or(0);
+                        let name_end_col = name_node.map(|n| n.end_position().column).unwrap_or(0);
 
                         if let Some(arrow) = child.named_children(&mut child.walk())
                             .find(|c| c.kind() == "arrow_function" || c.kind() == "function_expression")
@@ -151,6 +163,8 @@ fn analyze_node(
                                 name,
                                 line: child.start_position().row + 1,
                                 end_line: child.end_position().row + 1,
+                                name_start_col,
+                                name_end_col,
                                 parameters,
                                 return_type,
                                 function_calls: Some(function_calls),
@@ -257,10 +271,13 @@ fn parse_import_statement(
 
 
 fn parse_function(source: &str, node: &Node, imports: &[ImportInfo]) -> FunctionInfo {
-    let name = node.child_by_field_name("name")
+    let name_node = node.child_by_field_name("name");
+    let name = name_node
         .and_then(|n| n.utf8_text(source.as_bytes()).ok())
         .unwrap_or("<unnamed>")
         .to_string();
+    let name_start_col = name_node.map(|n| n.start_position().column).unwrap_or(0);
+    let name_end_col = name_node.map(|n| n.end_position().column).unwrap_or(0);
 
     let parameters = parse_parameters(source, node);
 
@@ -276,7 +293,7 @@ fn parse_function(source: &str, node: &Node, imports: &[ImportInfo]) -> Function
         .map(|body| find_local_variables(source, &body))
         .unwrap_or_default();
 
-    FunctionInfo { name, line: node.start_position().row + 1, end_line: node.end_position().row + 1, parameters, return_type, function_calls, local_variables }
+    FunctionInfo { name, line: node.start_position().row + 1, end_line: node.end_position().row + 1, name_start_col, name_end_col, parameters, return_type, function_calls, local_variables }
 }
 
 
@@ -323,46 +340,76 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
         match child.kind() {
             "call_expression" => {
                 if let Some(func_node) = child.child_by_field_name("function") {
+                    let call_line = child.start_position().row + 1;
+
                     match func_node.kind() {
                         "member_expression" => {
-                            let object = func_node.child_by_field_name("object")
+                            let prop_node = func_node.child_by_field_name("property");
+                            let property = prop_node
                                 .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                                 .unwrap_or("")
                                 .to_string();
-                            let property = func_node.child_by_field_name("property")
-                                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                                .unwrap_or("")
-                                .to_string();
+                            let start_col = prop_node.map(|n| n.start_position().column).unwrap_or(0);
+                            let end_col   = prop_node.map(|n| n.end_position().column).unwrap_or(0);
 
-                            // Verificar si object es un import real o una variable local
-                            let is_real_import = imports.iter().any(|i| {
-                                i.name == object || i.imported_names.contains(&object)
-                            });
+                            let obj_node = func_node.child_by_field_name("object");
+                            let obj_kind = obj_node.map(|n| n.kind()).unwrap_or("");
 
-                            if is_real_import {
-                                calls.push(FunctionCall { 
-                                    name: property, 
-                                    line: node.start_position().row + 1, 
-                                    import_name: Some(object), 
-                                    object_name: None 
+                            if obj_kind == "call_expression" {
+                                // Llamada encadenada: hola().bar()
+                                let chain_source_fn = obj_node
+                                    .and_then(|n| n.child_by_field_name("function"))
+                                    .and_then(|f| {
+                                        if f.kind() == "member_expression" {
+                                            f.child_by_field_name("property")
+                                        } else {
+                                            Some(f) // identifier
+                                        }
+                                    })
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .map(|s| s.to_string());
+
+                                calls.push(FunctionCall {
+                                    name: property, line: call_line, start_col, end_col,
+                                    import_name: None, object_name: None, chain_source_fn,
                                 });
                             } else {
-                                calls.push(FunctionCall { 
-                                    name: property, 
-                                    line: node.start_position().row + 1, 
-                                    import_name: None, 
-                                    object_name: Some(object)
+                                // obj.method() o module.function()
+                                let object = obj_node
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .unwrap_or("")
+                                    .to_string();
+
+                                let is_real_import = imports.iter().any(|i| {
+                                    i.name == object || i.imported_names.contains(&object)
                                 });
+
+                                if is_real_import {
+                                    calls.push(FunctionCall {
+                                        name: property, line: call_line, start_col, end_col,
+                                        import_name: Some(object), object_name: None, chain_source_fn: None,
+                                    });
+                                } else {
+                                    calls.push(FunctionCall {
+                                        name: property, line: call_line, start_col, end_col,
+                                        import_name: None, object_name: Some(object), chain_source_fn: None,
+                                    });
+                                }
                             }
                         }
-                        "identifier" => {
+                        _ => {
+                            // Llamada directa: foo() — identifier u otro
                             let name = func_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
                             let import_name = imports.iter()
                                 .find(|i| i.imported_names.contains(&name))
                                 .map(|i| i.name.clone());
-                            calls.push(FunctionCall { name, line: node.start_position().row + 1, import_name, object_name: None });
+                            let start_col = func_node.start_position().column;
+                            let end_col   = func_node.end_position().column;
+                            calls.push(FunctionCall {
+                                name, line: call_line, start_col, end_col,
+                                import_name, object_name: None, chain_source_fn: None,
+                            });
                         }
-                        _ => {}
                     }
                 }
                 calls.extend(find_calls(source, &child, imports));
