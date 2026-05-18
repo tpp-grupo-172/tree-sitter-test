@@ -435,16 +435,16 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                             .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                             .map(|s| s.to_string());
 
-                        let assigned_from = declarator.child_by_field_name("value")
+                        let rhs = declarator.child_by_field_name("value");
+
+                        let assigned_from = rhs
                             .filter(|n| n.kind() == "call_expression" || n.kind() == "new_expression")
                             .and_then(|n| {
                                 if n.kind() == "new_expression" {
-                                    // new Product(...) → "Product"
                                     n.child_by_field_name("constructor")
                                         .and_then(|c| c.utf8_text(source.as_bytes()).ok())
                                         .map(|s| s.to_string())
                                 } else {
-                                    // createProduct(...) o obj.createProduct(...)
                                     n.child_by_field_name("function")
                                         .and_then(|f| {
                                             if f.kind() == "member_expression" {
@@ -458,10 +458,16 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                                 }
                             });
 
+                        let assigned_identifier = rhs
+                            .filter(|n| n.kind() == "identifier")
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+
                         if let Some(name) = var_name {
                             variables.push(LocalVariable {
                                 name,
                                 assigned_from,
+                                assigned_identifier,
                                 line: declarator.start_position().row + 1,
                             });
                         }
@@ -469,7 +475,53 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                 }
                 variables.extend(find_local_variables(source, &child));
             }
-            "statement_block" | "if_statement" | "for_statement" | 
+            // Captura asignaciones this.attr = value en cuerpos de constructor/método
+            "expression_statement" => {
+                let mut expr_cursor = child.walk();
+                for expr in child.named_children(&mut expr_cursor) {
+                    if expr.kind() == "assignment_expression" {
+                        let lhs = expr.child_by_field_name("left");
+                        let rhs = expr.child_by_field_name("right");
+
+                        let var_name = lhs
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+
+                        let assigned_from = rhs
+                            .filter(|n| n.kind() == "call_expression" || n.kind() == "new_expression")
+                            .and_then(|n| {
+                                if n.kind() == "new_expression" {
+                                    n.child_by_field_name("constructor")
+                                        .and_then(|c| c.utf8_text(source.as_bytes()).ok())
+                                        .map(|s| s.to_string())
+                                } else {
+                                    n.child_by_field_name("function")
+                                        .and_then(|f| {
+                                            if f.kind() == "member_expression" { f.child_by_field_name("property") } else { Some(f) }
+                                        })
+                                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                        .map(|s| s.to_string())
+                                }
+                            });
+
+                        let assigned_identifier = rhs
+                            .filter(|n| n.kind() == "identifier")
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+
+                        if let Some(name) = var_name {
+                            variables.push(LocalVariable {
+                                name,
+                                assigned_from,
+                                assigned_identifier,
+                                line: expr.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+                variables.extend(find_local_variables(source, &child));
+            }
+            "statement_block" | "if_statement" | "for_statement" |
             "while_statement" | "try_statement" | "block" => {
                 variables.extend(find_local_variables(source, &child));
             }

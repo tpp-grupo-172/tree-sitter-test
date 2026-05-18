@@ -239,27 +239,32 @@ fn find_local_variables(source: &str, node: &tree_sitter::Node) -> Vec<LocalVari
                 variables.extend(find_local_variables(source, &child));
             }
             "assignment" => {
-                // lado izquierdo: el nombre de la variable
+                // lado izquierdo: el nombre de la variable (puede ser "self.attr")
                 let var_name = child
                     .child_by_field_name("left")
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                     .map(|s| s.to_string());
 
-                // lado derecho: si es una call, extraemos el nombre de la función
-                let assigned_from = child
-                    .child_by_field_name("right")
+                let rhs = child.child_by_field_name("right");
+
+                // lado derecho — caso call: x = foo()
+                let assigned_from = rhs
                     .filter(|n| n.kind() == "call")
                     .and_then(|n| n.child_by_field_name("function"))
                     .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                    .map(|s| {
-                        // si es obj.method() quedarnos solo con el nombre base
-                        s.split('.').last().unwrap_or(s).to_string()
-                    });
+                    .map(|s| s.split('.').last().unwrap_or(s).to_string());
+
+                // lado derecho — caso identifier simple: self.attr = param
+                let assigned_identifier = rhs
+                    .filter(|n| n.kind() == "identifier")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
 
                 if let Some(name) = var_name {
                     variables.push(LocalVariable {
                         name,
                         assigned_from,
+                        assigned_identifier,
                         line: child.start_position().row + 1,
                     });
                 }
@@ -333,9 +338,16 @@ fn find_calls<'a>(source: &'a str, node: &tree_sitter::Node<'a>, imports: &[Impo
                                     .unwrap_or("")
                                     .to_string();
 
+                                // Nota: se descartó el check ends_with(".{obj_text}") porque genera
+                                // falsos positivos cuando una variable local/parámetro tiene el mismo
+                                // nombre que el último componente de un módulo importado.
+                                // Ej: `from core.product import Product` + variable `product`
+                                // → "core.product".ends_with(".product") daría true incorrectamente.
+                                // Los dos checks restantes cubren todos los casos legítimos:
+                                //   i.name == obj_text       → `import product; product.func()`
+                                //   imported_names.contains  → `from X import product; product.func()`
                                 let is_real_import = imports.iter().any(|i| {
                                     i.name == obj_text
-                                        || i.name.ends_with(&format!(".{}", obj_text))
                                         || i.imported_names.contains(&obj_text)
                                 });
 
