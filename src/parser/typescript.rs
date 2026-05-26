@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use tree_sitter::{Parser, TreeCursor, Node};
 use crate::models::{
-    analysis_result::AnalysisResult, class_info::ClassInfo, function_call::FunctionCall, function_info::FunctionInfo, import_info::ImportInfo, local_variable::LocalVariable, parameter_info::ParameterInfo
+    analysis_result::AnalysisResult, class_info::{ClassInfo, FieldAnnotation}, function_call::FunctionCall, function_info::FunctionInfo, import_info::ImportInfo, local_variable::LocalVariable, parameter_info::ParameterInfo
 };
 
 
@@ -73,6 +73,7 @@ fn analyze_node(
                     name_start_col,
                     name_end_col,
                     methods: vec![],
+                    fields: vec![],
                 };
 
                 if let Some(body) = node.child_by_field_name("body") {
@@ -85,11 +86,59 @@ fn analyze_node(
             }
             "method_definition" => {
                 let func = parse_function(source, &node, &result.imports);
+
+                // Constructor shorthand: constructor(private searchService: SearchService)
+                // Los parámetros con modificador de acceso crean implícitamente un campo de clase.
+                let is_constructor = node.child_by_field_name("name")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s == "constructor")
+                    .unwrap_or(false);
+                if is_constructor {
+                    if let Some(params) = node.child_by_field_name("parameters") {
+                        for param in params.named_children(&mut params.walk()) {
+                            if matches!(param.kind(), "required_parameter" | "optional_parameter") {
+                                let has_access_modifier = param.named_children(&mut param.walk())
+                                    .any(|c| c.kind() == "accessibility_modifier");
+                                if has_access_modifier {
+                                    let pname = param.child_by_field_name("pattern")
+                                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                        .map(|s| s.to_string());
+                                    let ptype = param.child_by_field_name("type")
+                                        .and_then(|n| n.named_children(&mut n.walk()).next())
+                                        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                        .map(|s| s.to_string());
+                                    if let (Some(name), Some(annotation)) = (pname, ptype) {
+                                        if let Some(class) = current_class.as_deref_mut() {
+                                            class.fields.push(FieldAnnotation { name, annotation });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let Some(class) = current_class.as_deref_mut() {
                     class.methods.push(func);
                 }
             }
             "public_field_definition" => {
+                // Captura campos con tipo: `private searchService: SearchService;`
+                let fname = node.named_children(&mut node.walk())
+                    .find(|c| c.kind() == "property_identifier")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                let ftype = node.named_children(&mut node.walk())
+                    .find(|c| c.kind() == "type_annotation")
+                    .and_then(|n| n.named_children(&mut n.walk()).next())
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                if let (Some(name), Some(annotation)) = (fname, ftype) {
+                    if let Some(class) = current_class.as_deref_mut() {
+                        class.fields.push(FieldAnnotation { name, annotation });
+                    }
+                }
+
                 if let Some(arrow) = node.named_children(&mut node.walk())
                     .find(|c| c.kind() == "arrow_function")
                 {
@@ -131,10 +180,15 @@ fn analyze_node(
                     }
                 }
             }
-            "lexical_declaration" => {
+            "lexical_declaration" | "variable_declaration" => {
                 let mut decl_cursor = node.walk();
                 for child in node.named_children(&mut decl_cursor) {
                     if child.kind() == "variable_declarator" {
+                        if let Some(import) = parse_require_import(source, &child, path, root_path) {
+                            result.imports.push(import);
+                            continue;
+                        }
+
                         let name_node = child.named_children(&mut child.walk())
                             .find(|c| c.kind() == "identifier");
                         let name = name_node
@@ -191,6 +245,80 @@ fn analyze_node(
         if !cursor.goto_next_sibling() {
             break;
         }
+    }
+}
+
+
+fn parse_require_import(
+    source: &str,
+    node: &Node,
+    current_file: &Path,
+    project_roots: &[PathBuf],
+) -> Option<ImportInfo> {
+    let value = node.child_by_field_name("value")?;
+    if value.kind() != "call_expression" {
+        return None;
+    }
+
+    let func = value.child_by_field_name("function")?;
+    if func.utf8_text(source.as_bytes()).ok()? != "require" {
+        return None;
+    }
+
+    let args = value.child_by_field_name("arguments")?;
+    let module_name = args.named_children(&mut args.walk())
+        .find(|c| c.kind() == "string")
+        .and_then(|s| s.child_by_field_name("fragment")
+            .or_else(|| s.named_children(&mut s.walk()).find(|c| c.kind() == "string_fragment")))
+        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+        .unwrap_or("")
+        .to_string();
+
+    let import_path = resolve_ts_import(current_file, &module_name, project_roots);
+
+    let name_node = node.child_by_field_name("name")?;
+
+    match name_node.kind() {
+        "object_pattern" => {
+            let imported_names: Vec<String> = name_node.named_children(&mut name_node.walk())
+                .filter_map(|c| match c.kind() {
+                    "shorthand_property_identifier_pattern" | "identifier" => {
+                        c.utf8_text(source.as_bytes()).ok().map(|s| s.to_string())
+                    }
+                    "pair_pattern" => {
+                        c.child_by_field_name("value")
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string())
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            let parsed_name = module_name
+                .trim_start_matches("./")
+                .trim_start_matches("../")
+                .split('/')
+                .last()
+                .unwrap_or(&module_name)
+                .to_string();
+
+            Some(ImportInfo {
+                name: parsed_name,
+                line: node.start_position().row + 1,
+                path: import_path,
+                imported_names,
+            })
+        }
+        "identifier" => {
+            let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+            Some(ImportInfo {
+                name,
+                line: node.start_position().row + 1,
+                path: import_path,
+                imported_names: vec![],
+            })
+        }
+        _ => None,
     }
 }
 
@@ -421,6 +549,81 @@ fn find_calls(source: &str, node: &Node, imports: &[ImportInfo]) -> Vec<Function
     calls
 }
 
+const ARRAY_ITER_METHODS: &[&str] = &[
+    "forEach", "map", "filter", "find", "findLast", "findIndex",
+    "some", "every", "reduce", "reduceRight",
+];
+
+/// Dado un `call_expression` del tipo `this.items.reduce((sum, item) => ...)`,
+/// extrae el parámetro "elemento" del callback y lo devuelve como `LocalVariable`
+/// con `iterated_from = "this.items"`, para que el backend pueda resolver su tipo.
+fn extract_callback_params(source: &str, call_expr: &Node) -> Vec<LocalVariable> {
+    let mut vars = vec![];
+
+    let Some(func) = call_expr.child_by_field_name("function") else { return vars; };
+    if func.kind() != "member_expression" { return vars; }
+
+    let method = match func.child_by_field_name("property")
+        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+    {
+        Some(m) if ARRAY_ITER_METHODS.contains(&m) => m.to_string(),
+        _ => return vars,
+    };
+
+    let obj_text = match func.child_by_field_name("object")
+        .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+        .map(|s| s.to_string())
+    {
+        Some(o) if o.starts_with("this.") || o.starts_with("self.") => o,
+        _ => return vars,
+    };
+
+    let Some(args) = call_expr.child_by_field_name("arguments") else { return vars; };
+
+    // reduce/reduceRight: callback(acc, item) → elemento en índice 1; el resto en índice 0
+    let elem_idx = if method == "reduce" || method == "reduceRight" { 1 } else { 0 };
+
+    for arrow in args.named_children(&mut args.walk())
+        .filter(|c| c.kind() == "arrow_function")
+    {
+        // Arrow con paréntesis: (sum, item) => ...  →  field "parameters"
+        // Arrow sin paréntesis: item => ...          →  field "parameter"
+        let param_name = if let Some(params) = arrow.child_by_field_name("parameters") {
+            params.named_children(&mut params.walk())
+                .nth(elem_idx)
+                .and_then(|p| {
+                    if p.kind() == "identifier" {
+                        p.utf8_text(source.as_bytes()).ok().map(|s| s.to_string())
+                    } else {
+                        p.child_by_field_name("pattern")
+                            .or_else(|| p.named_children(&mut p.walk()).find(|c| c.kind() == "identifier"))
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string())
+                    }
+                })
+        } else if elem_idx == 0 {
+            arrow.child_by_field_name("parameter")
+                .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                .map(|s| s.to_string())
+        } else {
+            None
+        };
+
+        if let Some(name) = param_name {
+            vars.push(LocalVariable {
+                name,
+                assigned_from: None,
+                assigned_identifier: None,
+                iterated_from: Some(obj_text.clone()),
+                destructured_property: None,
+                line: call_expr.start_position().row + 1,
+            });
+        }
+    }
+
+    vars
+}
+
 fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
     let mut variables = vec![];
     let mut cursor = node.walk();
@@ -431,13 +634,20 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                 let mut decl_cursor = child.walk();
                 for declarator in child.named_children(&mut decl_cursor) {
                     if declarator.kind() == "variable_declarator" {
-                        let var_name = declarator.child_by_field_name("name")
-                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
-                            .map(|s| s.to_string());
-
+                        let name_node = declarator.child_by_field_name("name");
                         let rhs = declarator.child_by_field_name("value");
 
-                        let assigned_from = rhs
+                        // Pelar non_null_expression (TypeScript's `expr!`) para llegar al call real
+                        let rhs_inner = rhs.map(|n| {
+                            if n.kind() == "non_null_expression" {
+                                let mut w = n.walk();
+                                n.named_children(&mut w).next().unwrap_or(n)
+                            } else {
+                                n
+                            }
+                        });
+
+                        let assigned_from = rhs_inner
                             .filter(|n| n.kind() == "call_expression" || n.kind() == "new_expression")
                             .and_then(|n| {
                                 if n.kind() == "new_expression" {
@@ -458,16 +668,70 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                                 }
                             });
 
+                        // Destructuring: const { userAPI, productAPI } = buildApp()
+                        if name_node.map(|n| n.kind()) == Some("object_pattern") {
+                            let pattern = name_node.unwrap();
+                            let line = declarator.start_position().row + 1;
+                            for prop in pattern.named_children(&mut pattern.walk()) {
+                                match prop.kind() {
+                                    "shorthand_property_identifier_pattern" => {
+                                        if let Some(prop_name) = prop.utf8_text(source.as_bytes()).ok() {
+                                            variables.push(LocalVariable {
+                                                name: prop_name.to_string(),
+                                                assigned_from: assigned_from.clone(),
+                                                assigned_identifier: None,
+                                                iterated_from: None,
+                                                destructured_property: Some(prop_name.to_string()),
+                                                line,
+                                            });
+                                        }
+                                    }
+                                    "pair_pattern" => {
+                                        let key = prop.child_by_field_name("key")
+                                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                            .map(|s| s.to_string());
+                                        let value = prop.child_by_field_name("value")
+                                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                            .map(|s| s.to_string());
+                                        if let (Some(k), Some(v)) = (key, value) {
+                                            variables.push(LocalVariable {
+                                                name: v,
+                                                assigned_from: assigned_from.clone(),
+                                                assigned_identifier: None,
+                                                iterated_from: None,
+                                                destructured_property: Some(k),
+                                                line,
+                                            });
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            continue;
+                        }
+
+                        let var_name = name_node
+                            .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                            .map(|s| s.to_string());
+
                         let assigned_identifier = rhs
                             .filter(|n| n.kind() == "identifier")
                             .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                             .map(|s| s.to_string());
+
+                        // Captura parámetros de callbacks de array:
+                        // const x = this.items.reduce((sum, item) => ..., 0)
+                        if let Some(call) = rhs_inner.filter(|n| n.kind() == "call_expression") {
+                            variables.extend(extract_callback_params(source, &call));
+                        }
 
                         if let Some(name) = var_name {
                             variables.push(LocalVariable {
                                 name,
                                 assigned_from,
                                 assigned_identifier,
+                                iterated_from: None,
+                                destructured_property: None,
                                 line: declarator.start_position().row + 1,
                             });
                         }
@@ -487,7 +751,16 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                             .and_then(|n| n.utf8_text(source.as_bytes()).ok())
                             .map(|s| s.to_string());
 
-                        let assigned_from = rhs
+                        let rhs_inner = rhs.map(|n| {
+                            if n.kind() == "non_null_expression" {
+                                let mut w = n.walk();
+                                n.named_children(&mut w).next().unwrap_or(n)
+                            } else {
+                                n
+                            }
+                        });
+
+                        let assigned_from = rhs_inner
                             .filter(|n| n.kind() == "call_expression" || n.kind() == "new_expression")
                             .and_then(|n| {
                                 if n.kind() == "new_expression" {
@@ -514,9 +787,23 @@ fn find_local_variables(source: &str, node: &Node) -> Vec<LocalVariable> {
                                 name,
                                 assigned_from,
                                 assigned_identifier,
+                                iterated_from: None,
+                                destructured_property: None,
                                 line: expr.start_position().row + 1,
                             });
                         }
+                    }
+                }
+                variables.extend(find_local_variables(source, &child));
+            }
+            "expression_statement" if child.named_children(&mut child.walk())
+                .any(|c| c.kind() == "call_expression") =>
+            {
+                // Captura arrow function callbacks sobre this/self arrays:
+                // this.items.forEach((item) => item.method())
+                for expr in child.named_children(&mut child.walk()) {
+                    if expr.kind() == "call_expression" {
+                        variables.extend(extract_callback_params(source, &expr));
                     }
                 }
                 variables.extend(find_local_variables(source, &child));

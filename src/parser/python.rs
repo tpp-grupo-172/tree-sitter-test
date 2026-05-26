@@ -102,14 +102,49 @@ fn analyze_node(path: &Path, root_path: &[PathBuf], source: &str, cursor: &mut T
                 let name_start_col = name_node.map(|n| n.start_position().column).unwrap_or(0);
                 let name_end_col = name_node.map(|n| n.end_position().column).unwrap_or(0);
 
+                // Extraer field annotations del cuerpo de la clase antes de procesar métodos.
+                // Cubre: dataclass fields, class variables tipadas.
+                // Ej: `items: List[CartItem] = field(...)` → FieldAnnotation { "items", "List[CartItem]" }
+                let mut class_fields: Vec<crate::models::class_info::FieldAnnotation> = Vec::new();
+                if let Some(body) = node.child_by_field_name("body") {
+                    let mut body_cursor = body.walk();
+                    for stmt in body.children(&mut body_cursor) {
+                        if stmt.kind() == "annotated_assignment" || stmt.kind() == "expression_statement" {
+                            let target = if stmt.kind() == "annotated_assignment" {
+                                Some(stmt)
+                            } else {
+                                stmt.named_children(&mut stmt.walk())
+                                    .find(|c| c.kind() == "annotated_assignment")
+                            };
+                            if let Some(ann_assign) = target {
+                                let field_name = ann_assign
+                                    .child_by_field_name("left")
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .map(|s| s.to_string());
+                                let annotation = ann_assign
+                                    .child_by_field_name("type")
+                                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                                    .map(|s| s.to_string());
+                                if let (Some(fname), Some(ann)) = (field_name, annotation) {
+                                    class_fields.push(crate::models::class_info::FieldAnnotation {
+                                        name: fname,
+                                        annotation: ann,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
                 let mut class_info = ClassInfo {
                     name,
                     line: node.start_position().row + 1,
                     name_start_col,
                     name_end_col,
                     methods: Vec::new(),
+                    fields: class_fields,
                 };
-            
+
                 if let Some(body) = node.child_by_field_name("body") {
                     let mut inner_cursor = body.walk();
                     let mut class_ref = Some(&mut class_info);
@@ -265,6 +300,8 @@ fn find_local_variables(source: &str, node: &tree_sitter::Node) -> Vec<LocalVari
                         name,
                         assigned_from,
                         assigned_identifier,
+                        iterated_from: None,
+                        destructured_property: None,
                         line: child.start_position().row + 1,
                     });
                 }
@@ -272,11 +309,55 @@ fn find_local_variables(source: &str, node: &tree_sitter::Node) -> Vec<LocalVari
                 // recursivo por si hay assignments anidados (if, for, etc.)
                 variables.extend(find_local_variables(source, &child));
             }
-            // entrar en bloques if/for/while/with
-            "if_statement" | "for_statement" | "while_statement" | "with_statement" | "block" => {
+            // for_statement: capturar la variable del loop y luego recursar en el cuerpo
+            "for_statement" => {
+                let loop_var = child.child_by_field_name("left")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                let iterable = child.child_by_field_name("right")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                if let Some(name) = loop_var {
+                    variables.push(LocalVariable {
+                        name,
+                        assigned_from: None,
+                        assigned_identifier: None,
+                        iterated_from: iterable,
+                        destructured_property: None,
+                        line: child.start_position().row + 1,
+                    });
+                }
                 variables.extend(find_local_variables(source, &child));
             }
-            _ => {}
+            // Generator expressions y comprehensions: encontrar for_in_clause adentro
+            "generator_expression" | "list_comprehension" | "set_comprehension" | "dictionary_comprehension" => {
+                variables.extend(find_local_variables(source, &child));
+            }
+            "for_in_clause" => {
+                let loop_var = child.child_by_field_name("left")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                let iterable = child.child_by_field_name("right")
+                    .and_then(|n| n.utf8_text(source.as_bytes()).ok())
+                    .map(|s| s.to_string());
+                if let Some(name) = loop_var {
+                    variables.push(LocalVariable {
+                        name,
+                        assigned_from: None,
+                        assigned_identifier: None,
+                        iterated_from: iterable,
+                        destructured_property: None,
+                        line: child.start_position().row + 1,
+                    });
+                }
+            }
+            // En todos los demás casos, recursar para no perder variables en expresiones
+            // anidadas: return_statement, binary_operator, conditional_expression, etc.
+            // Solo los handlers explícitos arriba crean LocalVariable entries,
+            // así que recursar en todo es seguro.
+            _ => {
+                variables.extend(find_local_variables(source, &child));
+            }
         }
     }
 
